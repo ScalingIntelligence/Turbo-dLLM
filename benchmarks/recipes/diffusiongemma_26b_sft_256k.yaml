@@ -1,0 +1,64 @@
+# Two nodes with eight H200 GPUs each. Replace dataset and checkpoint paths.
+launch:
+  recipe_kind: prod
+  seed: 2026
+model:
+  id: google/diffusiongemma-26B-A4B-it
+  revision: f7f5b7f5fa82ffc52addd066915886d497f5517b
+  family: auto
+  seq_len: 262144
+  dtype: bf16
+  trust_remote_code: true
+objective:
+  name: diffusiongemma_native_sft
+  block_size: 256
+  noise_schedule: loglinear
+  loss_weighting: unit
+  sampling_epsilon_min: 0.001
+  sampling_epsilon_max: 1.0
+  antithetic_sampling: true
+  self_conditioning_probability: 0.5
+  encoder_loss_weight: 1.0
+  self_conditioning_row_chunk_size: 256
+  self_conditioning_vocab_chunk_size: 32768
+data:
+  input_mode: dataset
+  dataset_path: /data/prepared
+  blend_seed: 2026
+  shuffle: true
+training:
+  batch_size: 1
+  steps: 1000
+  gradient_accumulation_steps: 1
+  activation_checkpointing: true
+  activation_checkpointing_scope: full
+topology:
+  tensor_parallel_size: 1
+  expert_parallel_size: 2
+  context_parallel_size: 8
+  block_parallel_size: 8
+  placement_policy: inter_node_cp
+optimizer:
+  backend: deepspeed_zero2
+  allow_deepspeed_op_build: false
+  lr: 0.00001
+  adam_beta1: 0.95
+  adam_beta2: 0.99
+  adam_eps: 1.0e-8
+  weight_decay: 0.0001
+  gradient_clip_norm: 1.0
+scheduler:
+  type: cosine
+  warmup_steps: 40
+  decay_steps: 1000
+  min_lr: 0.000001
+checkpointing:
+  save_checkpoint_dir: ./checkpoints/diffusiongemma-26b-sft-256k
+  save_checkpoint_interval: 100
+  keep_last_n: 3
+  auto_resume: true
+  save_final: true
+kernel:
+  runtime_jit: false
+logging:
+  wandb: false

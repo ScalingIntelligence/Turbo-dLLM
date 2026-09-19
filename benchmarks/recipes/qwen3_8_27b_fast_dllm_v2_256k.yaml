@@ -1,0 +1,57 @@
+# Two nodes with eight H200 GPUs each. Replace dataset and checkpoint paths.
+launch:
+  recipe_kind: prod
+  seed: 2026
+model:
+  id: Qwen/Qwen3.8-27B
+  revision: 1d4bf0f2ff6012fd82039f2fa52739d0dd7c60c0
+  family: qwen3_8
+  seq_len: 262144
+  mask_token: <|mask|>
+  dtype: bf16
+objective:
+  name: fast_dllm_v2
+  block_size: 256
+  noise_schedule: linear_mask
+  loss_weighting: unit
+  noise_schedule_epsilon: 0.001
+  antithetic_sampling: true
+data:
+  input_mode: dataset
+  dataset_path: /data/prepared
+  blend_seed: 2026
+  shuffle: true
+training:
+  batch_size: 1
+  steps: 1000
+  gradient_accumulation_steps: 1
+  activation_checkpointing: true
+  activation_checkpointing_scope: full
+topology:
+  tensor_parallel_size: 2
+  sequence_parallel: true
+  tensor_parallel_overlap: false
+  context_parallel_size: 8
+  block_parallel_size: 8
+  placement_policy: inter_node_cp
+optimizer:
+  backend: deepspeed_zero2
+  allow_deepspeed_op_build: false
+  lr: 0.000001
+  gradient_clip_norm: 1.0
+scheduler:
+  type: cosine
+  warmup_steps: 40
+  decay_steps: 1000
+  min_lr: 0.0000001
+checkpointing:
+  save_checkpoint_dir: ./checkpoints/qwen3-8-27b-fast-dllm-v2-256k
+  save_checkpoint_interval: 100
+  keep_last_n: 3
+  auto_resume: true
+  save_final: true
+kernel:
+  cp_bp_clean_kv_transport: collective
+  runtime_jit: false
+logging:
+  wandb: false

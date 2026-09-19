@@ -1,0 +1,25 @@
+# Validated production stack for Linux, CUDA 12.8, and PyTorch cu128.
+# pip install . does not consume this file automatically; use
+# a release GPU bundle manifest or pass -c explicitly when building artifacts.
+# Modified FlashAttention and other native project wheels are intentionally
+# absent: the hash-pinned bundle manifest is their only install source.
+torch==2.10.0
+transformers==5.13.0
+accelerate==1.14.0
+deepspeed==0.19.2
+transformer-engine[core_cu12,pytorch]==2.13.0
+cuda-bindings==12.9.4
+cuda-python==12.9.4
+apache-tvm-ffi==0.1.12
+flash-linear-attention==0.5.2
+tilelang==0.1.13
+build==1.5.0
+ninja==1.13.0
+setuptools-scm==9.2.2
+nvidia-cutlass-dsl==4.5.2
+nvidia-cutlass-dsl-libs-base==4.5.2
+torch-c-dlpack-ext==0.1.5
+quack-kernels==0.5.0
+nvidia-nccl-cu12==2.30.4
+nvidia-nvshmem-cu12==3.3.9
+wandb==0.27.1

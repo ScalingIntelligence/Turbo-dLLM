@@ -1,0 +1,20 @@
+ARG BASE_IMAGE
+FROM ${BASE_IMAGE}
+
+ARG SOURCE_REVISION
+LABEL org.opencontainers.image.title="Turbo-dLLM CUDA training"
+LABEL org.opencontainers.image.source="https://github.com/ScalingIntelligence/Turbo-dLLM"
+LABEL org.opencontainers.image.revision="${SOURCE_REVISION}"
+
+COPY wheels/ /opt/dllm/wheels/
+COPY gpu-cu128.txt /opt/dllm/gpu-cu128.txt
+RUN python -m pip install --no-cache-dir \
+      --constraint=/opt/dllm/gpu-cu128.txt \
+      /opt/dllm/wheels/turbo_dllm-*.whl \
+    && python -m pip install --no-cache-dir --no-deps \
+      /opt/dllm/wheels/bdlm_flash_attn_3-*.whl \
+      /opt/dllm/wheels/flash_attn_4-*.whl \
+    && python -m dllm_parallel.cli doctor
+
+ENTRYPOINT ["dllm"]
+CMD ["--help"]

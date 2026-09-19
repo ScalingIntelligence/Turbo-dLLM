@@ -1,0 +1,24 @@
+include LICENSE
+include README.md
+include CHANGELOG.md
+include CODE_OF_CONDUCT.md
+include CONTRIBUTING.md
+include NOTICE
+include SECURITY.md
+include pyproject.toml
+include setup.py
+include constraints/gpu-cu128.txt
+include constraints/deepep-source.txt
+recursive-include docs *.md
+prune docs/superpowers
+recursive-include examples *.py
+recursive-include scripts *.sh
+recursive-include containers *
+include third_party/flash-attention/README.md
+include third_party/flash-attention/LICENSE
+include third_party/flash-attention/NOTICE
+include third_party/flash-attention/PROVENANCE.md
+recursive-include third_party/flash-attention/hopper *.cpp *.cu *.h *.hpp *.md *.py *.toml
+recursive-include third_party/flash-attention/csrc/cutlass/include *.h *.hpp *.inl
+global-exclude *.py[cod] *.so *.pyd *.dylib
+prune **/__pycache__

@@ -1,0 +1,674 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Block Parallelism for Efficient Distributed Long-Context Diffusion Language Model Training</title>
+  <meta name="description" content="Turbo-dLLM: highly optimized distributed training for diffusion language models and diffusion-based speculative decoding drafters. Context-Sharded Block Parallelism (CSBP) trains up to 7.59× faster at long context.">
+  <meta name="keywords" content="diffusion language models, block diffusion, BDLM, distributed training, context parallelism, block parallelism, CSBP, speculative decoding, DFlash2, long context">
+  <meta name="theme-color" content="#B1040E">
+
+  <!-- Link previews (X/Twitter, Slack, LinkedIn). Absolute URLs assume GitHub Pages for ScalingIntelligence/Turbo-dLLM. -->
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="Turbo-dLLM">
+  <meta property="og:title" content="Block Parallelism for Efficient Distributed Long-Context Diffusion Language Model Training">
+  <meta property="og:description" content="Up to 7.59× faster long-context diffusion LM training. CSBP is a new distributed parallelism strategy for block diffusion LMs and speculative decoding drafters.">
+  <meta property="og:url" content="https://scalingintelligence.stanford.edu/Turbo-dLLM/">
+  <meta property="og:image" content="https://scalingintelligence.stanford.edu/Turbo-dLLM/figures/social-card.png">
+  <meta property="og:image:width" content="2400">
+  <meta property="og:image:height" content="1260">
+  <meta property="og:image:alt" content="Training time per 1B tokens: CSBP versus the best existing parallelism strategies across three workloads, up to 7.59× faster.">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Block Parallelism for Efficient Distributed Long-Context Diffusion Language Model Training">
+  <meta name="twitter:description" content="Up to 7.59× faster long-context diffusion LM training.">
+  <meta name="twitter:image" content="https://scalingintelligence.stanford.edu/Turbo-dLLM/figures/social-card.png">
+
+  <link rel="icon" type="image/svg+xml" href="./figures/favicon-cardinal.svg">
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Fira+Code:wght@400;500;600&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="./static/css/bulma.min.css">
+  <link rel="stylesheet" href="./static/css/site.css">
+  <script defer src="./static/js/site.js"></script>
+  <script defer src="./static/js/csbp-anim.js"></script>
+  <script defer src="./static/js/lb-anim.js"></script>
+</head>
+
+<body>
+
+<nav class="side-nav" aria-label="Sections">
+  <a href="#overview" data-target="overview"><span class="dot"></span><span class="lbl">Overview</span></a>
+  <a href="#background" data-target="background"><span class="dot"></span><span class="lbl">Background</span></a>
+  <a href="#method" data-target="method"><span class="dot"></span><span class="lbl">Method</span></a>
+  <a href="#results" data-target="results"><span class="dot"></span><span class="lbl">Results</span></a>
+  <a href="#scaling" data-target="scaling"><span class="dot"></span><span class="lbl">Scaling</span></a>
+  <a href="#drafters" data-target="drafters"><span class="dot"></span><span class="lbl">Drafters</span></a>
+  <a href="#stack" data-target="stack"><span class="dot"></span><span class="lbl">Stack</span></a>
+  <a href="#library" data-target="library"><span class="dot"></span><span class="lbl">Library</span></a>
+  <a href="#downstream" data-target="downstream"><span class="dot"></span><span class="lbl">Downstream</span></a>
+  <a href="#details" data-target="details"><span class="dot"></span><span class="lbl">Details</span></a>
+  <a href="#citation" data-target="citation"><span class="dot"></span><span class="lbl">Citation</span></a>
+</nav>
+
+<main>
+
+<!-- ============================== Hero ============================== -->
+<section class="page-section" id="top" style="padding-top:2.5rem;">
+  <div class="container is-max-desktop">
+    <header class="hero-flow">
+      <div class="hero-orb" aria-hidden="true"></div>
+      <h1 class="hero-text"><span class="accent">Block Parallelism</span> for Efficient Distributed Long-Context Diffusion Language Model Training</h1>
+      <p class="hero-lead">
+        We introduce <span class="name">Context-Sharded Block Parallelism (CSBP)</span>, a <b>new distributed parallelism strategy</b>
+        that unlocks <b>significant <span class="nowrap">long-context</span> training efficiency</b>.
+      </p>
+      <p class="hero-support">
+        For diffusion LLMs and speculative decoding drafters, and open-sourced in <b>Turbo-dLLM</b>, our new highly optimized
+        distributed training library.
+      </p>
+
+      <div class="authors">
+        <span class="author-list">
+          <span class="author">Tarun Suresh<sup>*</sup></span>
+          <span class="author">Pranshu Chaturvedi<sup>*</sup></span>
+          <span class="author">Hangoo Kang<sup>*</sup></span>
+          <span class="author">Parth Shroff</span>
+          <br>
+          <span class="author">Ishan S. Khare</span>
+          <span class="author">Hermann Kumbong</span>
+          <span class="author">Azalia Mirhoseini</span>
+        </span>
+        <span class="affiliation">Stanford University<span class="note"><sup>*</sup>Equal contribution</span></span>
+      </div>
+
+      <div class="hero-actions">
+        <a class="cta primary" href="https://arxiv.org/abs/2609.19242" target="_blank" rel="noopener">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6zm-1 2l5 5h-5V4zM6 20V4h5v7h7v9H6z"/></svg>
+          Read the Paper
+        </a>
+        <a class="cta dark" href="https://github.com/ScalingIntelligence/Turbo-dLLM" target="_blank" rel="noopener">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/></svg>
+          Code
+        </a>
+        <button class="cta install" id="install-btn" type="button" data-copy="pip install turbo-dllm" aria-label="Install Library: copy pip install turbo-dllm">
+          <span class="prompt">$</span>
+          <span>pip install turbo-dllm</span>
+          <svg class="copy-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+          <span class="copied-label">Copied!</span>
+        </button>
+      </div>
+
+      <div class="hero-waves" aria-hidden="true">
+        <svg class="waves-svg" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 24 150 28" preserveAspectRatio="none" shape-rendering="auto">
+          <defs><path id="gentle-wave" d="M-160 44c30 0 58-18 88-18s 58 18 88 18 58-18 88-18 58 18 88 18 v44h-352z"></path></defs>
+          <g class="wave-parallax">
+            <use xlink:href="#gentle-wave" x="48" y="0" fill="rgba(177,4,14,0.20)"></use>
+            <use xlink:href="#gentle-wave" x="48" y="3" fill="rgba(226,84,92,0.14)"></use>
+            <use xlink:href="#gentle-wave" x="48" y="5" fill="rgba(125,132,139,0.12)"></use>
+            <use xlink:href="#gentle-wave" x="48" y="7" fill="rgba(177,4,14,0.20)"></use>
+          </g>
+        </svg>
+      </div>
+    </header>
+
+    <!-- ============================== Overview ============================== -->
+    <div id="overview">
+      <h2 class="tagline">Faster long-context training, across the board</h2>
+      <div class="card-surface reveal wide">
+        <picture>
+          <source media="(max-width: 768px)" srcset="./figures/headline-mobile.png">
+          <img src="./figures/headline.png" width="2400" height="1350" alt="Training time per 1B tokens versus context length for three workloads. Autoregressive to block diffusion training of Qwen3.8-27B: CSBP is 1.26×, 1.30× and 1.33× faster at 64K, 128K and 256K. Block diffusion fine-tuning of DiffusionGemma 26B-A4B: 1.25×, 1.44×, 1.45× and 1.61× faster from 64K to 512K. DFlash2 speculative decoding drafter training for Qwen3.8-27B: 2.48× faster at 512K and 7.59× faster at 1M.">
+        </picture>
+      </div>
+      <p class="tldr-caption">
+        <strong>CSBP</strong> cuts the wall-clock cost of training on long sequences for every workload we tried, and the gap
+        widens as contexts grow. On 16&nbsp;H200 GPUs it converts <strong>Qwen3.8-27B</strong> into a block diffusion model
+        <span class="g">1.33×</span> faster at 256K and fine-tunes <strong>DiffusionGemma 26B-A4B</strong>
+        <span class="g">1.61×</span> faster at 512K. On a single 8&nbsp;H100 node it trains a DFlash2 speculative decoding drafter
+        <span class="g">7.59×</span> faster at 1M tokens of context, while computing exactly the same objective and gradients.
+      </p>
+    </div>
+  </div>
+</section>
+
+<!-- ============================== Background ============================== -->
+<section class="page-section">
+  <div class="container is-max-desktop">
+    <div class="sec-eyebrow" id="background">Background</div>
+
+    <svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+      <defs>
+        <marker id="bg-arrow-red" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#B1040E"/></marker>
+        <marker id="bg-arrow-ink" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#6b6b6b"/></marker>
+      </defs>
+    </svg>
+
+    <div class="bg-grid">
+      <!-- Block diffusion LMs -->
+      <article class="bg-card reveal">
+        <h3 class="bg-title">Block diffusion language models</h3>
+        <p class="bg-lede">Generate text block by block, denoising every token inside a block in parallel.</p>
+
+        <svg class="bg-svg" viewBox="0 0 420 58" role="img" aria-label="Blocks 1 and 2 are finished; the four masked tokens of block 3 are denoised in parallel.">
+          <g class="bg-tokens">
+            <g transform="translate(50 6)">
+              <rect class="tok" x="0" width="22" height="22" rx="4"/><rect class="tok-bar" x="5" y="9.5" width="12" height="3" rx="1.5"/>
+              <rect class="tok" x="25" width="22" height="22" rx="4"/><rect class="tok-bar" x="30" y="9.5" width="12" height="3" rx="1.5"/>
+              <rect class="tok" x="50" width="22" height="22" rx="4"/><rect class="tok-bar" x="55" y="9.5" width="12" height="3" rx="1.5"/>
+              <rect class="tok" x="75" width="22" height="22" rx="4"/><rect class="tok-bar" x="80" y="9.5" width="12" height="3" rx="1.5"/>
+            </g>
+            <g transform="translate(161 6)">
+              <rect class="tok" x="0" width="22" height="22" rx="4"/><rect class="tok-bar" x="5" y="9.5" width="12" height="3" rx="1.5"/>
+              <rect class="tok" x="25" width="22" height="22" rx="4"/><rect class="tok-bar" x="30" y="9.5" width="12" height="3" rx="1.5"/>
+              <rect class="tok" x="50" width="22" height="22" rx="4"/><rect class="tok-bar" x="55" y="9.5" width="12" height="3" rx="1.5"/>
+              <rect class="tok" x="75" width="22" height="22" rx="4"/><rect class="tok-bar" x="80" y="9.5" width="12" height="3" rx="1.5"/>
+            </g>
+            <g transform="translate(272 6)">
+              <g class="cell"><rect class="mask" width="22" height="22" rx="4"/><text class="mask-t" x="11" y="15">M</text><g class="reveal-a"><rect class="new" width="22" height="22" rx="4"/><rect class="new-bar" x="5" y="9.5" width="12" height="3" rx="1.5"/></g></g>
+              <g class="cell" transform="translate(25 0)"><rect class="mask" width="22" height="22" rx="4"/><text class="mask-t" x="11" y="15">M</text><g class="reveal-b"><rect class="new" width="22" height="22" rx="4"/><rect class="new-bar" x="5" y="9.5" width="12" height="3" rx="1.5"/></g></g>
+              <g class="cell" transform="translate(50 0)"><rect class="mask" width="22" height="22" rx="4"/><text class="mask-t" x="11" y="15">M</text><g class="reveal-a"><rect class="new" width="22" height="22" rx="4"/><rect class="new-bar" x="5" y="9.5" width="12" height="3" rx="1.5"/></g></g>
+              <g class="cell" transform="translate(75 0)"><rect class="mask" width="22" height="22" rx="4"/><text class="mask-t" x="11" y="15">M</text><g class="reveal-b"><rect class="new" width="22" height="22" rx="4"/><rect class="new-bar" x="5" y="9.5" width="12" height="3" rx="1.5"/></g></g>
+            </g>
+          </g>
+          <text class="lbl" x="98.5" y="46" text-anchor="middle">block 1</text>
+          <text class="lbl" x="209.5" y="46" text-anchor="middle">block 2</text>
+          <text class="lbl red" x="320.5" y="46" text-anchor="middle">block 3 · denoised in parallel</text>
+        </svg>
+
+        <div class="bg-sub">Training input</div>
+        <svg class="bg-svg" viewBox="0 0 420 122" role="img" aria-label="Training places a clean copy and a corrupted copy of the sequence side by side, 2L tokens. Corrupted block 3 attends only to itself and to clean blocks 1 and 2.">
+          <text class="lbl" x="10" y="32">clean</text>
+          <text class="lbl" x="10" y="86">corrupted</text>
+          <g>
+            <rect class="clean hi" x="86" y="16" width="66" height="24" rx="5"/><text class="num-clean" x="119" y="32">1</text>
+            <rect class="clean hi" x="160" y="16" width="66" height="24" rx="5"/><text class="num-clean" x="193" y="32">2</text>
+            <rect class="clean dim" x="234" y="16" width="66" height="24" rx="5"/><text class="num-clean dim" x="267" y="32">3</text>
+            <rect class="clean dim" x="308" y="16" width="66" height="24" rx="5"/><text class="num-clean dim" x="341" y="32">4</text>
+          </g>
+          <g>
+            <rect class="corrupt dim" x="86" y="70" width="66" height="24" rx="5"/><text class="num-corrupt dim" x="119" y="86">1</text>
+            <rect class="corrupt dim" x="160" y="70" width="66" height="24" rx="5"/><text class="num-corrupt dim" x="193" y="86">2</text>
+            <rect class="corrupt target" x="234" y="70" width="66" height="24" rx="5"/><text class="num-corrupt" x="267" y="86">3</text>
+            <rect class="corrupt dim" x="308" y="70" width="66" height="24" rx="5"/><text class="num-corrupt dim" x="341" y="86">4</text>
+          </g>
+          <path class="flow" d="M258 70 C 250 52, 150 60, 124 42" marker-end="url(#bg-arrow-red)"/>
+          <path class="flow" d="M266 70 C 262 56, 214 56, 198 42" marker-end="url(#bg-arrow-red)"/>
+          <path class="flow" d="M300 76 c 16 -6 16 18 1 13" marker-end="url(#bg-arrow-red)"/>
+          <path class="brace" d="M382 16 h6 v78 h-6"/>
+          <text class="lbl strong" x="394" y="59">2L</text>
+          <text class="lbl" x="210" y="116" text-anchor="middle">corrupted block 3 reads only itself and clean blocks 1–2</text>
+        </svg>
+
+        <svg class="bg-svg ruler" viewBox="0 0 420 56" role="img" aria-label="Context length from 64K to 1M tokens.">
+          <text class="lbl" x="30" y="10">context length</text>
+          <line class="axis" x1="30" y1="28" x2="392" y2="28" marker-end="url(#bg-arrow-ink)"/>
+          <circle class="pt" cx="30" cy="28" r="4.5"/><circle class="pt" cx="112" cy="28" r="4.5"/><circle class="pt" cx="194" cy="28" r="4.5"/><circle class="pt" cx="276" cy="28" r="4.5"/><circle class="pt" cx="358" cy="28" r="4.5"/>
+          <text class="lbl" x="30" y="50" text-anchor="middle">64K</text><text class="lbl" x="112" y="50" text-anchor="middle">128K</text><text class="lbl" x="194" y="50" text-anchor="middle">256K</text><text class="lbl" x="276" y="50" text-anchor="middle">512K</text><text class="lbl" x="358" y="50" text-anchor="middle">1M</text>
+        </svg>
+
+        <p class="bg-foot">Every token appears twice, so a 256K example is 512K positions of attention input and must be split
+          across GPUs. <b>Conventional context parallelism splits both copies and sends both copies' K/V between GPUs.</b></p>
+      </article>
+
+      <!-- Diffusion speculative decoding -->
+      <article class="bg-card reveal">
+        <h3 class="bg-title">Block diffusion speculative decoding</h3>
+        <p class="bg-lede">A small diffusion drafter writes a whole block in one pass from the target model's features; the target then verifies it.</p>
+
+        <svg class="bg-svg" viewBox="0 0 420 58" role="img" aria-label="The frozen target model reads the context and passes features to the drafter, which fills a block of masked tokens in one pass; the target verifies them.">
+          <g>
+            <rect class="clean" x="6" y="9" width="13" height="18" rx="3"/><rect class="clean" x="21" y="9" width="13" height="18" rx="3"/><rect class="clean" x="36" y="9" width="13" height="18" rx="3"/><rect class="clean" x="51" y="9" width="13" height="18" rx="3"/><rect class="clean" x="66" y="9" width="13" height="18" rx="3"/><rect class="clean" x="81" y="9" width="13" height="18" rx="3"/>
+          </g>
+          <line class="arrow" x1="97" y1="18" x2="112" y2="18" marker-end="url(#bg-arrow-ink)"/>
+          <rect class="box-dark" x="114" y="4" width="62" height="28" rx="7"/><text class="box-t" x="145" y="22">Target</text>
+          <line class="arrow" x1="178" y1="18" x2="194" y2="18" marker-end="url(#bg-arrow-ink)"/>
+          <rect class="box-red" x="196" y="4" width="64" height="28" rx="7"/><text class="box-t" x="228" y="22">Drafter</text>
+          <line class="arrow" x1="262" y1="18" x2="278" y2="18" marker-end="url(#bg-arrow-ink)"/>
+          <g transform="translate(282 7)">
+            <rect class="anchor" width="24" height="22" rx="4"/><rect class="anchor-bar" x="6" y="9.5" width="12" height="3" rx="1.5"/>
+            <g transform="translate(27 0)"><rect class="mask" width="24" height="22" rx="4"/><text class="mask-t" x="12" y="15">M</text><g class="reveal-c"><rect class="new" width="24" height="22" rx="4"/><rect class="new-bar" x="6" y="9.5" width="12" height="3" rx="1.5"/></g><text class="check" x="12" y="41">✓</text></g>
+            <g transform="translate(54 0)"><rect class="mask" width="24" height="22" rx="4"/><text class="mask-t" x="12" y="15">M</text><g class="reveal-c"><rect class="new" width="24" height="22" rx="4"/><rect class="new-bar" x="6" y="9.5" width="12" height="3" rx="1.5"/></g><text class="check" x="12" y="41">✓</text></g>
+            <g transform="translate(81 0)"><rect class="mask" width="24" height="22" rx="4"/><text class="mask-t" x="12" y="15">M</text><g class="reveal-c"><rect class="new" width="24" height="22" rx="4"/><rect class="new-bar" x="6" y="9.5" width="12" height="3" rx="1.5"/></g><text class="check" x="12" y="41">✓</text></g>
+          </g>
+          <text class="lbl" x="50" y="46" text-anchor="middle">context</text>
+          <text class="lbl" x="145" y="46" text-anchor="middle">frozen</text>
+          <text class="lbl red" x="228" y="46" text-anchor="middle">one pass</text>
+        </svg>
+
+        <div class="bg-sub">Training input</div>
+        <svg class="bg-svg" viewBox="0 0 420 122" role="img" aria-label="Target features for the whole sequence, with several sampled draft blocks. The highlighted block reads only the target features before its anchor token and never sees the other blocks.">
+          <text class="lbl" x="10" y="32">features</text>
+          <text class="lbl" x="10" y="86">draft blocks</text>
+          <g class="feat">
+            <rect x="86" y="20" width="15" height="22" rx="3"/><rect x="103" y="20" width="15" height="22" rx="3"/><rect x="120" y="20" width="15" height="22" rx="3"/><rect x="137" y="20" width="15" height="22" rx="3"/><rect x="154" y="20" width="15" height="22" rx="3"/><rect x="171" y="20" width="15" height="22" rx="3"/><rect x="188" y="20" width="15" height="22" rx="3"/><rect x="205" y="20" width="15" height="22" rx="3"/><rect x="222" y="20" width="15" height="22" rx="3"/><rect x="239" y="20" width="15" height="22" rx="3"/><rect x="256" y="20" width="15" height="22" rx="3"/><rect x="273" y="20" width="15" height="22" rx="3"/><rect x="290" y="20" width="15" height="22" rx="3"/><rect x="307" y="20" width="15" height="22" rx="3"/><rect x="324" y="20" width="15" height="22" rx="3"/><rect x="341" y="20" width="15" height="22" rx="3"/><rect x="358" y="20" width="15" height="22" rx="3"/><rect x="375" y="20" width="15" height="22" rx="3"/>
+          </g>
+          <rect class="prefix-hi" x="83" y="16" width="154" height="30" rx="6"/>
+          <g class="dim">
+            <rect class="anchor" x="137" y="72" width="12" height="22" rx="3"/><rect class="corrupt" x="151" y="72" width="12" height="22" rx="3"/><rect class="corrupt" x="165" y="72" width="12" height="22" rx="3"/><rect class="corrupt" x="179" y="72" width="12" height="22" rx="3"/>
+          </g>
+          <g>
+            <rect class="anchor" x="239" y="72" width="12" height="22" rx="3"/><rect class="corrupt" x="253" y="72" width="12" height="22" rx="3"/><rect class="corrupt" x="267" y="72" width="12" height="22" rx="3"/><rect class="corrupt" x="281" y="72" width="12" height="22" rx="3"/>
+            <rect class="target-outline" x="236" y="69" width="60" height="28" rx="6"/>
+          </g>
+          <g class="dim">
+            <rect class="anchor" x="324" y="72" width="12" height="22" rx="3"/><rect class="corrupt" x="338" y="72" width="12" height="22" rx="3"/><rect class="corrupt" x="352" y="72" width="12" height="22" rx="3"/><rect class="corrupt" x="366" y="72" width="12" height="22" rx="3"/>
+          </g>
+          <path class="flow" d="M262 69 C 250 54, 196 58, 170 48" marker-end="url(#bg-arrow-red)"/>
+          <text class="lbl" x="245" y="112" text-anchor="middle">each block reads features before its anchor, never other blocks</text>
+        </svg>
+
+        <svg class="bg-svg ruler" viewBox="0 0 420 56" role="img" aria-label="Context length from 64K to 1M tokens.">
+          <text class="lbl" x="30" y="10">context length</text>
+          <line class="axis" x1="30" y1="28" x2="392" y2="28" marker-end="url(#bg-arrow-ink)"/>
+          <circle class="pt" cx="30" cy="28" r="4.5"/><circle class="pt" cx="112" cy="28" r="4.5"/><circle class="pt" cx="194" cy="28" r="4.5"/><circle class="pt" cx="276" cy="28" r="4.5"/><circle class="pt" cx="358" cy="28" r="4.5"/>
+          <text class="lbl" x="30" y="50" text-anchor="middle">64K</text><text class="lbl" x="112" y="50" text-anchor="middle">128K</text><text class="lbl" x="194" y="50" text-anchor="middle">256K</text><text class="lbl" x="276" y="50" text-anchor="middle">512K</text><text class="lbl" x="358" y="50" text-anchor="middle">1M</text>
+        </svg>
+
+        <p class="bg-foot">Drafters for long-context targets train on sequences of up to a million tokens.
+          <b>Conventional context parallelism repeats every block-local drafter computation on each context GPU.</b></p>
+      </article>
+    </div>
+
+    <p class="bg-bridge reveal">
+      In both, training is <strong>one long shared context</strong> plus <strong>many small block-local computations</strong>.
+      Conventional context parallelism splits everything by token position and ignores that structure. <span class="g">CSBP is built around it.</span>
+    </p>
+  </div>
+</section>
+
+<!-- ============================== Method ============================== -->
+<section class="page-section">
+  <div class="container is-max-desktop">
+    <div class="sec-eyebrow">Method</div>
+    <div class="how-band reveal" id="method">
+      <div class="how-orb how-orb-1" aria-hidden="true"></div>
+      <div class="how-orb how-orb-2" aria-hidden="true"></div>
+      <h2 class="how-title">How does <span>Context-Sharded Block Parallelism (CSBP)</span> work?</h2>
+      <p class="how-intro">Split the shared context across GPUs, but never split a block.</p>
+      <ul class="how-list">
+        <li>Corrupted keys and values are only ever read by <b>their own block</b>, yet conventional context parallelism sends them, and their gradients, between GPUs at every layer.</li>
+        <li><b>Block parallelism (BP)</b> runs each block's whole forward pass, loss, and backward pass on one GPU, so corrupted K/V never leave it.</li>
+        <li><b>Context-sharded block parallelism (CSBP)</b> also shards the shared clean context across those GPUs. Only clean K/V and their gradients cross GPUs, and the loss and gradients stay exact.</li>
+      </ul>
+    </div>
+
+    <div class="card-surface anim-card reveal" id="csbp-anim">
+      <div class="anim-head">
+        <div class="fig-label">CSBP in motion</div>
+        <div class="anim-legend" aria-hidden="true">
+          <span><i class="sw sw-clean"></i>clean K/V</span>
+          <span><i class="sw sw-corrupt"></i>corrupted K/V</span>
+          <span><i class="sw sw-grad"></i>gradients</span>
+        </div>
+      </div>
+      <div class="anim-stage">
+        <svg id="anim-svg" role="img" aria-labelledby="anim-desc"><desc id="anim-desc">Animated comparison of conventional context parallelism and CSBP on 3 GPUs with 6 blocks. Context parallelism splits the clean and corrupted copies by token position and sends both kinds of keys, values, and gradients between GPUs. CSBP splits only the clean context, keeps each corrupted block whole on one GPU, and sends only clean keys, values, and gradients, half the traffic in this sketch.</desc></svg>
+      </div>
+      <div class="anim-controls">
+        <button class="anim-play" id="anim-play" type="button" aria-label="Pause animation">
+          <svg class="i-pause" width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><rect x="2" y="1" width="3.5" height="12" rx="1"/><rect x="8.5" y="1" width="3.5" height="12" rx="1"/></svg>
+          <svg class="i-play" width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><path d="M3 1.5v11l9.5-5.5z"/></svg>
+        </button>
+        <div class="anim-chips" role="tablist" aria-label="Animation steps">
+          <button type="button" class="anim-chip" data-phase="0"><b>1</b> Shard</button>
+          <button type="button" class="anim-chip" data-phase="1"><b>2</b> Forward</button>
+          <button type="button" class="anim-chip" data-phase="2"><b>3</b> Backward</button>
+          <button type="button" class="anim-chip" data-phase="3"><b>4</b> Result</button>
+        </div>
+        <div class="anim-progress" aria-hidden="true"><span id="anim-progress-fill"></span></div>
+      </div>
+      <p class="anim-caption" id="anim-caption" aria-live="polite"></p>
+
+    </div>
+
+    <div class="card-surface anim-card reveal" id="lb-anim">
+      <div class="anim-head">
+        <div class="fig-label">Load balancing</div>
+        <div class="anim-legend" aria-hidden="true">
+          <span><i class="sw sw-corrupt"></i>block work</span>
+          <span><i class="sw sw-done"></i>computed</span>
+          <span><i class="sw sw-idle"></i>idle</span>
+        </div>
+      </div>
+      <div class="anim-stage">
+        <svg id="lb-svg" role="img" aria-labelledby="lb-desc"><desc id="lb-desc">Animated comparison of two ways to assign 6 blocks to 3 GPUs. A block's attention work grows with its position. Assigning blocks in order gives the last GPU the most work while the first GPUs sit idle waiting for it. CSBP pairs early and late blocks, 1 with 6, 2 with 5, and 3 with 4, so every GPU does the same work and the step finishes sooner.</desc></svg>
+      </div>
+      <div class="anim-controls">
+        <button class="anim-play" id="lb-play" type="button" aria-label="Pause animation">
+          <svg class="i-pause" width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><rect x="2" y="1" width="3.5" height="12" rx="1"/><rect x="8.5" y="1" width="3.5" height="12" rx="1"/></svg>
+          <svg class="i-play" width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><path d="M3 1.5v11l9.5-5.5z"/></svg>
+        </button>
+        <div class="anim-progress" aria-hidden="true"><span id="lb-progress-fill"></span></div>
+      </div>
+      <p class="anim-caption">
+        Later blocks attend to longer prefixes, so they cost more. Handing out blocks in order leaves the last GPU with the most
+        work while the others <b>sit idle</b> waiting for it. CSBP pairs early and late blocks so <b>every GPU does the same work</b>,
+        and the same pairing balances the sharded clean context, so the whole step finishes sooner.
+      </p>
+    </div>
+  </div>
+</section>
+
+<!-- ============================== Stack ============================== -->
+<section class="page-section">
+  <div class="container is-max-desktop">
+    <div class="sec-eyebrow">Library</div>
+    <h2 class="tagline tagline-sm" id="stack">Turbo-dLLM: Optimized for Long-Context Spec Decoding and Diffusion Training End to End</h2>
+    <p class="tldr-caption" style="text-align:left; max-width:none; margin:0 0 18px;">
+      CSBP decides <strong>where</strong> work runs. Turbo-dLLM also rewrites <strong>how</strong> each step runs, replacing the
+      generic building blocks that stock trainers use for both workloads.
+    </p>
+    <details class="sub-accordion">
+      <summary>Speculative Decoding Optimizations</summary>
+      <div class="acc-body">
+        <div class="mini-table-wrap">
+          <table class="mini-table lefttab why-table">
+            <thead><tr><th>Layer</th><th>Turbo-dLLM</th><th>SGLang SpecForge</th><th>Effect</th></tr></thead>
+            <tbody>
+              <tr><td><b>Target context</b></td><td>Compacts the union of the required sliding windows</td><td class="dim">Projects the full target sequence in every draft layer</td><td>Much less K/V compute and memory</td></tr>
+              <tr><td><b>Attention</b></td><td>Specialized FlashAttention-4 interval attention with cached sparse plans</td><td class="dim">Generic FlexAttention / SDPA / eager masks</td><td>Less mask construction and workspace</td></tr>
+              <tr><td><b>Projections</b></td><td>Packed QKV, packed context K/V, packed MLP</td><td class="dim">Separate projections and concatenations</td><td>Fewer kernel launches and intermediates</td></tr>
+              <tr><td><b>Vocabulary loss</b></td><td>Streams rows through the frozen LM head without materializing full logits</td><td class="dim">Materializes logits in checkpointed chunks and recomputes them in backward</td><td>Lower memory traffic, less recomputation</td></tr>
+              <tr><td><b>Parallelism</b></td><td>Context and block parallelism on top of data parallelism</td><td class="dim">FSDP sharding modes; trainer tensor parallelism unsupported offline</td><td>Fits contexts a single GPU cannot hold</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </details>
+    <details class="sub-accordion">
+      <summary>Block Diffusion Optimizations</summary>
+      <div class="acc-body">
+        <div class="mini-table-wrap">
+          <table class="mini-table lefttab why-table">
+            <thead><tr><th>Layer</th><th>Turbo-dLLM</th><th>NVIDIA AutoModel</th><th>Effect</th></tr></thead>
+            <tbody>
+              <tr><td><b>Attention</b></td><td>Represents the whole structured mask in one compiled FlexAttention call per layer</td><td class="dim">Evaluates each shard block by block, with a separate attention launch for the growing clean prefix and each noisy fragment</td><td>Far fewer launches and no per-block mask overhead</td></tr>
+              <tr><td><b>Vocabulary loss</b></td><td>Token-chunked projection and cross-entropy that never materializes full-sequence logits</td><td class="dim">Materializes logits for both streams, and runs out of memory at the matched topology</td><td>Fits where the baseline cannot</td></tr>
+              <tr><td><b>Parallelism</b></td><td>Dual-end zigzag layout pairs early and late regions across ranks</td><td class="dim">Assigns contiguous blocks, leaving later ranks with much longer prefixes</td><td>Balanced attention work instead of stragglers</td></tr>
+              <tr><td><b>Collectives</b></td><td>Fused K/V collectives, exact fused backward, and owner reduce-scatter</td><td class="dim">Autograd all-gather followed by a blockwise attention decomposition</td><td>Less exposed communication per layer</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </details>
+  </div>
+</section>
+
+<!-- ============================== Results ============================== -->
+<section class="page-section">
+  <div class="container is-max-desktop">
+    <div class="sec-eyebrow">Results</div>
+    <h2 class="tagline" id="results">CSBP Accelerates Long-Context Block Diffusion Training</h2>
+    <div class="card-surface reveal">
+      <div class="mini-table-wrap">
+        <table class="mini-table results-table">
+          <thead>
+            <tr>
+              <th rowspan="2">Model</th>
+              <th colspan="2" class="span">Best baseline</th>
+              <th colspan="2" class="span ours">CSBP</th>
+              <th rowspan="2">Speedup</th>
+              <th rowspan="2">Peak memory (GiB)<br>baseline → CSBP</th>
+            </tr>
+            <tr>
+              <th>Topology</th><th>Tok/s</th>
+              <th>Topology</th><th>Tok/s</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr class="group"><td colspan="7">Block diffusion fine-tuning</td></tr>
+            <tr><td>NemotronDiffusion 3B</td><td class="topo">DP4/CP4</td><td class="dim">13,434</td><td class="topo ours">DP4/CP4/BP4</td><td class="hl">16,027</td><td><span class="speed">1.19×</span></td><td>57.1 → <b>57.0</b></td></tr>
+            <tr><td>NemotronDiffusion 8B</td><td class="topo">DP4/CP4</td><td class="dim">9,668</td><td class="topo ours">DP4/CP4/BP4</td><td class="hl">11,379</td><td><span class="speed">1.18×</span></td><td>97.5 → 97.5</td></tr>
+            <tr><td>NemotronDiffusion 14B</td><td class="topo">DP2/CP8</td><td class="dim">7,884</td><td class="topo ours">DP2/CP8/BP8</td><td class="hl">9,301</td><td><span class="speed">1.18×</span></td><td>91.1 → <b>90.6</b></td></tr>
+            <tr><td>DiffusionGemma 26B-A4B</td><td class="topo">DP1/EP2/CP8</td><td class="dim">10,557</td><td class="topo ours">DP1/EP2/CP8/BP8</td><td class="hl">15,359</td><td><span class="speed">1.45×</span></td><td>118.1 → <b>113.6</b></td></tr>
+            <tr class="group"><td colspan="7">Autoregressive → block diffusion conversion</td></tr>
+            <tr><td>Qwen3.8-27B</td><td class="topo">DP1/TP2/CP8</td><td class="dim">2,623</td><td class="topo ours">DP1/TP2/CP8/BP8</td><td class="hl">3,490</td><td><span class="speed">1.33×</span></td><td>120.7 → <b>111.1</b></td></tr>
+            <tr><td>Qwen3.5-27B</td><td class="topo">DP1/TP2/CP8</td><td class="dim">2,641</td><td class="topo ours">DP1/TP2/CP8/BP8</td><td class="hl">3,351</td><td><span class="speed">1.27×</span></td><td>120.7 → <b>111.1</b></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="table-note">16× H200, 256K context. The baseline is the fastest feasible combination of data, tensor, expert, context and sequence parallelism we found for each model, tuned with the same kernels and optimizations as CSBP. Topology degrees: DP data, TP tensor (omitted when 1), EP expert, CP context, BP block parallelism.</p>
+    </div>
+    <p class="tldr-caption">
+      CSBP is faster for <strong>every</strong> model and both objectives at 256K context:
+      <span class="g">1.18–1.45×</span> for block diffusion fine-tuning and <span class="g">1.27–1.33×</span> for converting
+      autoregressive models, while matching or <strong>reducing</strong> peak memory.
+    </p>
+  </div>
+</section>
+
+<!-- ============================== Scaling ============================== -->
+<section class="page-section">
+  <div class="container is-max-desktop">
+    <div class="sec-eyebrow">Scaling</div>
+    <h2 class="tagline" id="scaling">Speedup Scales with Context Length</h2>
+    <div class="card-surface reveal">
+      <picture>
+        <source media="(max-width: 768px)" srcset="./figures/context-scaling-mobile.png">
+        <img src="./figures/context-scaling.png" width="1950" height="1200" alt="Training time per 1B tokens versus context length. Autoregressive to block diffusion training of Qwen3.8-27B from 64K to 256K: CSBP is 1.26×, 1.30× and 1.33× faster. Block diffusion fine-tuning of DiffusionGemma 26B-A4B from 64K to 512K: 1.25×, 1.44×, 1.45× and 1.61× faster.">
+      </picture>
+    </div>
+    <p class="tldr-caption">
+      Longer contexts make CSBP's advantage grow. Converting <strong>Qwen3.8-27B</strong> into a block diffusion model speeds up
+      from <span class="g">1.26×</span> at 64K to <span class="g">1.33×</span> at 256K, and fine-tuning
+      <strong>DiffusionGemma 26B-A4B</strong> from <span class="g">1.25×</span> at 64K to <span class="g">1.61×</span> at 512K:
+      the longer the sequence, the more it pays to keep corrupted K/V off the wire.
+    </p>
+  </div>
+</section>
+
+<!-- ============================== Drafters ============================== -->
+<section class="page-section">
+  <div class="container is-max-desktop">
+    <div class="sec-eyebrow">Speculative decoding</div>
+    <h2 class="tagline" id="drafters">Up to <span class="num">7.59×</span> faster drafter training at 1M context</h2>
+    <div class="card-surface reveal">
+      <picture>
+        <source media="(max-width: 768px)" srcset="./figures/dflash2-scaling-mobile.png">
+        <img src="./figures/dflash2-scaling.png" width="1950" height="1200" alt="DFlash2 drafter training time per 1B tokens on 8× H100. Qwen3.8-27B drafter: CSBP is 2.48× faster at 512K and 7.59× faster at 1M. Muse-Glimmer-30B drafter: 1.56× faster at 256K, 3.35× at 512K and 4.81× at 1M.">
+      </picture>
+    </div>
+    <p class="tldr-caption">
+      DFlash2 drafters see the largest gains. Conventional CP copies the block-local draft decoder, vocabulary loss and selector
+      onto every context rank, while CSBP gives each draft block to exactly one GPU. Freeing that memory lets more replicas train
+      in parallel: <span class="g">7.59×</span> faster for the <strong>Qwen3.8-27B</strong> drafter and <span class="g">4.81×</span>
+      faster for the <strong>Muse-Glimmer-30B</strong> drafter at 1M tokens, on a single 8&nbsp;H100 node.
+    </p>
+  </div>
+</section>
+
+<!-- ============================== Library ============================== -->
+<section class="page-section">
+  <div class="container is-max-desktop">
+    <div class="sec-eyebrow">Benchmark</div>
+    <h2 class="tagline" id="library">Turbo-dLLM Accelerates Long-Context Training Over Stock Libraries</h2>
+    <h3 class="stack-subhead">Speculative Decoding Drafter Training</h3>
+    <div class="card-surface reveal">
+      <div class="mini-table-wrap">
+        <table class="mini-table lib-table">
+          <thead>
+            <tr>
+              <th rowspan="2">Context</th>
+              <th colspan="2" class="span ours">Turbo-dLLM</th>
+              <th colspan="2" class="span">SGLang SpecForge</th>
+              <th rowspan="2">Speedup</th>
+            </tr>
+            <tr><th>Topology</th><th>Tok/s</th><th>Topology</th><th>Tok/s</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>64K</td><td class="topo ours">DP8</td><td class="hl">167,960</td><td class="topo">DP8</td><td class="dim">84,002</td><td><span class="speed">2.00×</span></td></tr>
+            <tr><td>128K</td><td class="topo ours">DP8</td><td class="hl">167,900</td><td class="topo">DP8</td><td class="dim">73,199</td><td><span class="speed">2.29×</span></td></tr>
+            <tr><td>256K</td><td class="topo ours">DP8</td><td class="hl">166,732</td><td class="topo dim">DP8</td><td class="oom">OOM</td><td class="dim">only Turbo-dLLM fits</td></tr>
+            <tr><td>512K</td><td class="topo ours">DP4/CP2/BP2</td><td class="hl">141,222</td><td class="topo dim">—</td><td class="oom">OOM</td><td class="dim">only Turbo-dLLM fits</td></tr>
+            <tr><td>1M</td><td class="topo ours">DP4/CP2/BP2</td><td class="hl">139,541</td><td class="topo dim">—</td><td class="oom">OOM</td><td class="dim">only Turbo-dLLM fits</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="table-note">DFlash2 drafter training for Qwen3.8-27B on one 8×H100 node, best topology per library and context.</p>
+    </div>
+    <p class="tldr-caption">
+      Turbo-dLLM trains the same drafter <span class="g">2.00×</span> faster at 64K and <span class="g">2.29×</span> faster at 128K,
+      and keeps going to <strong>1M</strong> context where SGLang SpecForge has no configuration that fits.
+    </p>
+
+    <h3 class="stack-subhead">Block Diffusion Fine-Tuning</h3>
+    <div class="card-surface reveal">
+      <div class="mini-table-wrap">
+        <table class="mini-table lib-table">
+          <thead>
+            <tr>
+              <th rowspan="2">Context</th>
+              <th colspan="3" class="span ours">Turbo-dLLM</th>
+              <th colspan="3" class="span">NVIDIA AutoModel</th>
+              <th rowspan="2">Advantage</th>
+            </tr>
+            <tr><th>Topology</th><th>Tok/s</th><th>Peak HBM</th><th>Topology</th><th>Tok/s</th><th>Peak HBM</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>64K</td><td class="topo ours">DP8/CP2/BP2</td><td class="hl">22,152</td><td>89.8 GiB</td><td class="topo">DP4/TP2/CP2/SP</td><td class="dim">2,934</td><td class="dim">114.1 GiB</td><td><span class="speed">7.55×</span></td></tr>
+            <tr><td>128K</td><td class="topo ours">DP4/CP4/BP4</td><td class="hl">15,136</td><td>90.1 GiB</td><td class="topo">DP2/TP2/CP4/SP</td><td class="dim">2,155</td><td class="dim">114.1 GiB</td><td><span class="speed">7.02×</span></td></tr>
+            <tr><td>256K</td><td class="topo ours">DP2/CP8/BP8</td><td class="hl">9,301</td><td>90.6 GiB</td><td class="topo">DP1/TP2/CP8/SP</td><td class="dim">633</td><td class="dim">130.1 GiB</td><td><span class="speed">14.69×</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="table-note">NemotronDiffusion 14B on 16× H200, aggregate input tokens/s for each library's fastest feasible setup.
+        AutoModel uses two GPUs per replica for tensor parallelism and therefore runs half the global batch. The Turbo-dLLM rows
+        are the paper's CSBP topologies.</p>
+    </div>
+
+  </div>
+</section>
+
+<!-- ============================== Downstream ============================== -->
+<section class="page-section">
+  <div class="container is-max-desktop">
+    <div class="sec-eyebrow">Downstream</div>
+    <h2 class="tagline" id="downstream">Same GPUs, same hours, better coding agents</h2>
+    <div class="card-surface reveal">
+      <picture>
+        <source media="(max-width: 768px)" srcset="./figures/equal-wall-clock-mobile.png">
+        <img src="./figures/equal-wall-clock.png" width="1950" height="1140" alt="Pass rate versus training time for DiffusionGemma 26B-A4B. SWE-bench Verified: CSBP reaches 33.8, 35.4, 36.0 and 36.4 percent at 3, 6, 9 and 12 hours, versus 32.2, 33.6, 34.6 and 35.4 for the best baseline. Terminal-Bench Lite: CSBP reaches 27, 29, 30 and 30 percent versus 26, 27, 28 and 29.">
+      </picture>
+    </div>
+    <p class="tldr-caption">
+      Higher throughput means more learning per GPU-hour. We fine-tuned DiffusionGemma 26B-A4B for 12 hours on eight H100s
+      with each method, using identical data, optimizer and evaluation, and tested checkpoints every three hours. CSBP leads at
+      <strong>every</strong> trained checkpoint on both <strong>SWE-bench Verified</strong> and <strong>Terminal-Bench Lite</strong>, by up to
+      <span class="g">+1.8</span> and <span class="g">+2</span> points.
+    </p>
+  </div>
+</section>
+
+<!-- ============================== Details ============================== -->
+<section class="page-section">
+  <div class="container is-max-desktop">
+    <div class="sec-eyebrow">Details</div>
+    <h2 class="tagline" id="details">Under the hood</h2>
+
+    <details class="sub-accordion">
+      <summary>Where does the time go? Attention traffic at 256K</summary>
+      <div class="acc-body">
+        <p>Keeping corrupted K/V local <strong>halves</strong> attention traffic for NemotronDiffusion 14B, which uses full attention.
+          DiffusionGemma 26B-A4B saves more because 25 of its 30 layers use a 1,024-token sliding window: there, CSBP sends only
+          the clean rows each GPU's queries can see, while the CP8 baseline exchanges full shards in every layer.</p>
+        <div class="mini-table-wrap">
+          <table class="mini-table">
+            <thead><tr><th>Measure</th><th>NemotronDiffusion 14B<br>CP8 → CSBP</th><th>DiffusionGemma 26B-A4B<br>CP8 → CSBP</th></tr></thead>
+            <tbody>
+              <tr><td>Step time (s)</td><td>66.50 → 56.37 <span class="speed">1.18×</span></td><td>49.66 → 34.13 <span class="speed">1.45×</span></td></tr>
+              <tr><td>Forward GPU span (s)</td><td>17.57 → 13.00 <span class="hl">−26.0%</span></td><td>10.99 → 5.83 <span class="hl">−47.0%</span></td></tr>
+              <tr><td>Backward GPU span (s)</td><td>49.46 → 45.02 <span class="hl">−9.0%</span></td><td>36.50 → 26.62 <span class="hl">−27.1%</span></td></tr>
+              <tr><td>Attention traffic (GiB/GPU)</td><td>210.00 → 105.00 <span class="hl">−50.0%</span></td><td>433.13 → 28.30 <span class="hl">−93.5%</span></td></tr>
+              <tr><td>Exposed attention comm. (s/GPU)</td><td>3.034 → 2.414 <span class="hl">−20.4%</span></td><td>10.939 → 0.723 <span class="hl">−93.4%</span></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </details>
+
+    <details class="sub-accordion">
+      <summary>Why shard the context? Block parallelism on its own runs out of memory</summary>
+      <div class="acc-body">
+        <p>Without context sharding, ranks that own later blocks must hold nearly the whole clean prefix. Pure BP is slower and
+          uses more memory for NemotronDiffusion 14B at 64K, then runs out of memory at 128K. DiffusionGemma runs out of memory at
+          both lengths. CSBP fits and is fastest in every case.</p>
+        <div class="mini-table-wrap">
+          <table class="mini-table">
+            <thead><tr><th>Model</th><th>Context</th><th>Method</th><th>Topology</th><th>Tok/s</th><th>Peak memory (GiB)</th></tr></thead>
+            <tbody>
+              <tr><td>NemotronDiffusion 14B</td><td>64K</td><td>Best baseline</td><td>DP8/CP2</td><td>20,092</td><td>89.5</td></tr>
+              <tr><td></td><td></td><td>Pure BP</td><td>DP8/BP2</td><td>15,223</td><td>110.7</td></tr>
+              <tr><td></td><td></td><td><b>CSBP</b></td><td>DP8/CP2/BP2</td><td class="hl">22,152</td><td>89.8</td></tr>
+              <tr><td>NemotronDiffusion 14B</td><td>128K</td><td>Best baseline</td><td>DP4/CP4</td><td>13,114</td><td>90.0</td></tr>
+              <tr><td></td><td></td><td>Pure BP</td><td>DP4/BP4</td><td class="oom">OOM</td><td class="oom">OOM</td></tr>
+              <tr><td></td><td></td><td><b>CSBP</b></td><td>DP4/CP4/BP4</td><td class="hl">15,136</td><td>90.1</td></tr>
+              <tr><td>DiffusionGemma 26B-A4B</td><td>64K</td><td>Best baseline</td><td>DP4/EP2/CP2</td><td>22,154</td><td>109.4</td></tr>
+              <tr><td></td><td></td><td>Pure BP</td><td>DP4/EP2/BP2</td><td class="oom">OOM</td><td class="oom">OOM</td></tr>
+              <tr><td></td><td></td><td><b>CSBP</b></td><td>DP4/EP2/CP2/BP2</td><td class="hl">27,653</td><td>113.5</td></tr>
+              <tr><td>DiffusionGemma 26B-A4B</td><td>128K</td><td>Best baseline</td><td>DP2/EP2/CP4</td><td>14,584</td><td>112.0</td></tr>
+              <tr><td></td><td></td><td>Pure BP</td><td>DP2/EP2/BP4</td><td class="oom">OOM</td><td class="oom">OOM</td></tr>
+              <tr><td></td><td></td><td><b>CSBP</b></td><td>DP2/EP2/CP4/BP4</td><td class="hl">21,049</td><td>113.6</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </details>
+
+    <details class="sub-accordion">
+      <summary>Load balancing: pairing early and late blocks</summary>
+      <div class="acc-body">
+        <p>Later blocks attend to longer prefixes, so handing out blocks in order leaves the last rank doing the most work.
+          CSBP gives block <em>b</em> and block <em>B</em>+1−<em>b</em> to the same rank and uses the same early–late pairing
+          for zigzag clean-sequence sharding. Every pair then does identical work, which balances both target-block and
+          clean causal attention across ranks exactly, with no extra memory.</p>
+        <div class="mini-table-wrap">
+          <table class="mini-table">
+            <thead><tr><th>Model (256K)</th><th>Topology</th><th>Contiguous<br>tok/s</th><th>Dual-end<br>tok/s</th><th>Speedup</th><th>Peak memory (GiB)</th></tr></thead>
+            <tbody>
+              <tr><td>NemotronDiffusion 3B</td><td>DP4/CP4/BP4</td><td class="dim">11,788</td><td class="hl">15,768</td><td><span class="speed">1.34×</span></td><td>57.0 → 57.0</td></tr>
+              <tr><td>DiffusionGemma 26B-A4B</td><td>EP2/CP8/BP8</td><td class="dim">11,991</td><td class="hl">15,359</td><td><span class="speed">1.28×</span></td><td>120.1 → <b>113.6</b></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </details>
+
+  </div>
+</section>
+
+<!-- ============================== Citation ============================== -->
+<section class="page-section" style="padding-bottom:1rem;">
+  <div class="container is-max-desktop">
+    <div class="sec-eyebrow">Citation</div>
+    <h2 class="tagline" id="citation">BibTeX</h2>
+    <div class="bibtex-wrap">
+      <button class="copy-bib" id="copy-bib" type="button">Copy</button>
+<pre class="bibtex" id="bibtex">@misc{suresh2026blockparallelismefficientdistributed,
+      title={Block Parallelism For Efficient Distributed Long-Context Diffusion Language Model Training}, 
+      author={Tarun Suresh and Pranshu Chaturvedi and Hangoo Kang and Parth Shroff and Ishan S. Khare and Hermann Kumbong and Azalia Mirhoseini},
+      year={2026},
+      eprint={2609.19242},
+      archivePrefix={arXiv},
+      primaryClass={cs.LG},
+      url={https://arxiv.org/abs/2609.19242}, 
+}</pre>
+    </div>
+  </div>
+</section>
+
+</main>
+
+<footer class="site-footer">
+  <p>
+    <a href="https://github.com/ScalingIntelligence/Turbo-dLLM" target="_blank" rel="noopener">Code</a> &nbsp;&middot;&nbsp;
+    <a href="https://github.com/ScalingIntelligence/Turbo-dLLM/tree/main/docs" target="_blank" rel="noopener">Documentation</a> &nbsp;&middot;&nbsp;
+    <a href="#top">Back to top</a>
+  </p>
+  <p class="credit">
+    Website adapted from the <a href="https://github.com/polaris-evals/polaris-evals.github.io" target="_blank" rel="noopener">PolaRiS template</a>
+  </p>
+</footer>
+
+</body>
+</html>

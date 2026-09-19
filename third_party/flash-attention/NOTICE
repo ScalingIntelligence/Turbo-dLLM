@@ -1,0 +1,6 @@
+This directory contains a modified fork of FlashAttention, copyright the
+FlashAttention authors and contributors, distributed under the BSD 3-Clause
+license in LICENSE.
+
+Local changes support Turbo-dLLM's coordinated attention artifacts. Source
+and patch provenance is documented in PROVENANCE.md.

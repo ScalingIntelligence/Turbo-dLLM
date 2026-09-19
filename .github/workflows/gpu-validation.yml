@@ -1,0 +1,140 @@
+name: GPU validation
+
+on:
+  workflow_call:
+    inputs:
+      cuda_arch_list:
+        description: Explicit PyTorch CUDA architecture list
+        required: true
+        type: string
+      bundle_name:
+        description: Release artifact name
+        required: true
+        type: string
+      smoke_recipe:
+        description: Packaged recipe used for the GPU smoke
+        required: false
+        default: smoke/cuda-fast-dllm-v2
+        type: string
+  workflow_dispatch:
+    inputs:
+      cuda_arch_list:
+        description: Explicit PyTorch CUDA architecture list
+        required: true
+        default: "9.0"
+        type: string
+      bundle_name:
+        description: Release artifact name
+        required: true
+        default: gpu-sm90-cu128
+        type: string
+      smoke_recipe:
+        description: Packaged recipe used for the GPU smoke
+        required: true
+        default: smoke/cuda-fast-dllm-v2
+        type: string
+
+permissions:
+  contents: read
+  id-token: write
+  attestations: write
+
+jobs:
+  qualify:
+    runs-on: [self-hosted, linux, x64, gpu]
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+      - name: Require a clean source commit
+        run: test -z "$(git status --porcelain)"
+      - name: Install native build environment
+        run: uv pip install --system -e ".[test,dev,kernel-build]"
+      - name: Inspect runner compatibility
+        run: scripts/install/check_system_requirements.sh --python python --gpu
+      - name: Build coordinated native wheels
+        run: |
+          scripts/build/build_cuda_wheels.sh \
+            --python python \
+            --cuda-arch-list "${{ inputs.cuda_arch_list }}" \
+            --output-dir dist
+      - name: Verify wheel identities and native manifests
+        run: scripts/verify/artifacts.sh --python python --directory dist
+      - name: Install coordinated wheels with runtime dependencies
+        run: |
+          python -m venv "$RUNNER_TEMP/dllm-release-runtime"
+          RUNTIME_PY="$RUNNER_TEMP/dllm-release-runtime/bin/python"
+          "$RUNTIME_PY" -m pip install --upgrade pip
+          "$RUNTIME_PY" - <<'PY'
+          from pathlib import Path
+          import subprocess
+          import sys
+
+          wheels = sorted(Path("dist").glob("*.whl"))
+          package = next(path for path in wheels if path.name.startswith("turbo_dllm-"))
+          native = [path for path in wheels if path != package]
+          subprocess.run(
+              [
+                  sys.executable,
+                  "-m",
+                  "pip",
+                  "install",
+                  "--force-reinstall",
+                  f"turbo-dllm[gpu,test] @ {package.resolve().as_uri()}",
+                  *map(str, native),
+              ],
+              check=True,
+          )
+          PY
+          echo "$RUNNER_TEMP/dllm-release-runtime/bin" >> "$GITHUB_PATH"
+      - name: GPU smoke
+        working-directory: ${{ runner.temp }}
+        run: |
+          dllm recipe copy "${{ inputs.smoke_recipe }}" "$RUNNER_TEMP/gpu-smoke.yaml"
+          "$GITHUB_WORKSPACE/scripts/verify/gpu_smoke.sh" --config "$RUNNER_TEMP/gpu-smoke.yaml"
+      - name: Attention and kernel correctness
+        working-directory: ${{ runner.temp }}
+        run: python -m pytest -q -o pythonpath= "$GITHUB_WORKSPACE/tests/unit/attention" "$GITHUB_WORKSPACE/tests/unit/kernels"
+      - name: Distributed correctness
+        working-directory: ${{ runner.temp }}
+        run: |
+          python -c 'import torch; assert torch.cuda.device_count() >= 2, "distributed release validation requires at least two GPUs"'
+          python -m pytest -o pythonpath= -m distributed "$GITHUB_WORKSPACE/tests/distributed"
+      - name: Checkpoint resume
+        working-directory: ${{ runner.temp }}
+        run: python -m pytest -o pythonpath= -m checkpoint_resume "$GITHUB_WORKSPACE/tests/integration"
+      - name: Performance instrumentation smoke
+        working-directory: ${{ runner.temp }}
+        run: python -m pytest -o pythonpath= -m performance "$GITHUB_WORKSPACE/tests/distributed/test_gpu_performance_smoke.py"
+      - name: Create hash-pinned bundle manifest
+        run: |
+          PYTHON_ABI="$(python -c 'import sys; print(f"cp{sys.version_info.major}{sys.version_info.minor}")')"
+          python -m dllm_parallel.core.kernels.bundle_manifest create \
+            --directory dist \
+            --output "dist/${{ inputs.bundle_name }}.json" \
+            --base-url "https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}" \
+            --cuda "12.8" \
+            --architectures "${{ inputs.cuda_arch_list }}" \
+            --python-abi "$PYTHON_ABI" \
+            --platform linux_x86_64 \
+            --source-revision "$GITHUB_SHA"
+      - name: Generate native checksums
+        run: (cd dist && sha256sum *.whl > SHA256SUMS)
+      - uses: anchore/sbom-action/download-syft@v0
+      - name: Generate native SBOMs
+        run: |
+          for artifact in dist/*.whl; do
+            scripts/build/generate_sbom.sh \
+              --artifact "$artifact" \
+              --output "$artifact.cdx.json"
+          done
+      - uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: "dist/*.whl"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.bundle_name }}
+          path: dist/*
+          if-no-files-found: error

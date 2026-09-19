@@ -1,0 +1,172 @@
+\begin{tikzpicture}[
+    x=1cm,
+    y=1cm,
+    font=\sffamily\scriptsize,
+    >={Latex[length=2.2mm,width=1.5mm]},
+    device/.style={draw=black!58, fill=black!2, rounded corners=2.3pt,
+                   line width=0.7pt, minimum width=2.64cm,
+                   minimum height=2.16cm},
+    ownerdevice/.style={draw=BPOrange, fill=BPOrange!4,
+                       rounded corners=2.3pt, line width=1.05pt,
+                       minimum width=2.64cm, minimum height=2.16cm},
+    clean/.style={draw=BPBlue, fill=BPBlue!13, rounded corners=1.4pt,
+                  line width=0.7pt, align=center},
+    corrupt/.style={draw=BPOrange, fill=BPOrange!16, rounded corners=1.4pt,
+                    dash pattern=on 2.4pt off 1.2pt, line width=0.75pt,
+                    align=center},
+    shard/.style={minimum width=1.10cm, minimum height=0.58cm,
+                  text width=1.00cm, inner xsep=0pt, align=center},
+    blockjob/.style={minimum width=2.16cm, minimum height=0.78cm,
+                     text width=2.06cm, inner xsep=0pt, align=center},
+    callout/.style={draw=black!38, fill=black!3, rounded corners=2.3pt,
+                    line width=0.65pt, text width=2.90cm,
+                    minimum width=3.18cm, minimum height=1.14cm,
+                    inner xsep=0.14cm, inner ysep=0.10cm,
+                    align=center},
+    fwdclean/.style={draw=BPBlue, line width=1.0pt,
+                     -{Latex[length=2.4mm,width=1.6mm]}},
+    fwdcorrupt/.style={draw=BPOrange, line width=1.0pt,
+                       -{Latex[length=2.4mm,width=1.6mm]}},
+    bwdclean/.style={draw=BPBlue, line width=0.95pt,
+                     dash pattern=on 3pt off 1.6pt,
+                     -{Latex[length=2.4mm,width=1.6mm]}},
+    bwdcorrupt/.style={draw=BPOrange, line width=0.95pt,
+                       dash pattern=on 3pt off 1.6pt,
+                       -{Latex[length=2.4mm,width=1.6mm]}},
+    groupclean/.style={draw=BPBlue, line width=1.0pt,
+                       {Latex[length=2.4mm,width=1.6mm]}-{Latex[length=2.4mm,width=1.6mm]}},
+    groupcorrupt/.style={draw=BPOrange, line width=1.0pt,
+                         {Latex[length=2.4mm,width=1.6mm]}-{Latex[length=2.4mm,width=1.6mm]}},
+    groupgradclean/.style={draw=BPBlue, line width=0.95pt,
+                           dash pattern=on 3pt off 1.6pt,
+                           {Latex[length=2.4mm,width=1.6mm]}-{Latex[length=2.4mm,width=1.6mm]}},
+    groupgradcorrupt/.style={draw=BPOrange, line width=0.95pt,
+                             dash pattern=on 3pt off 1.6pt,
+                             {Latex[length=2.4mm,width=1.6mm]}-{Latex[length=2.4mm,width=1.6mm]}},
+    connector/.style={draw=black!30, line width=0.55pt},
+    cleanconnector/.style={draw=BPBlue!65, line width=0.6pt}
+]
+\definecolor{BPBlue}{HTML}{356F9F}
+\definecolor{BPOrange}{HTML}{B66718}
+
+% Legend.
+\node[clean, minimum width=0.34cm, minimum height=0.20cm,
+      inner sep=0pt] at (4.02,6.02) {};
+\node[anchor=west, text=black!72, font=\sffamily\tiny]
+      at (4.27,6.02) {Clean tokens};
+\node[draw=BPOrange, fill=BPOrange!15, minimum width=0.34cm, minimum height=0.20cm,
+      inner sep=0pt] at (6.57,6.02) {};
+\node[anchor=west, text=black!72, font=\sffamily\tiny]
+      at (6.82,6.02) {Corrupted tokens};
+
+% ---------------------------------------------------------------------------
+% Context parallelism: the combined clean-plus-corrupted sequence is sharded.
+% ---------------------------------------------------------------------------
+\node[anchor=east, font=\sffamily\scriptsize\bfseries, text=black!82]
+      at (1.85,4.28) {(a) CP};
+
+\foreach \x/\r/\n in {3.18/{1}/1,6.18/{2}/2,9.18/{3}/3} {
+    \node[device] (cpd\n) at (\x,4.28) {};
+    \node[font=\sffamily\scriptsize\bfseries, text=black!76]
+          at ([yshift=-0.33cm]cpd\n.north) {Rank \r};
+    \node[font=\sffamily\tiny, align=center, text=BPBlue!88!black]
+          at ({\x-0.57},4.62) {Clean\\$Q/K/V$};
+    \node[font=\sffamily\tiny, align=center, text=BPOrange!90!black]
+          at ({\x+0.57},4.62) {Corrupted\\$Q/K/V$};
+    \foreach \i in {1,2,3} {
+        \pgfmathtruncatemacro{\tokenpos}{3*(\n-1)+\i}
+        \node[draw=BPBlue, fill=BPBlue!13, line width=0.65pt,
+              minimum width=0.30cm, minimum height=0.40cm,
+              inner sep=0pt, font=\sffamily\tiny]
+              at ({\x-0.57+0.34*(\i-2)},4.16) {\tokenpos};
+        \node[draw=BPOrange, fill=BPOrange!15, line width=0.65pt,
+              minimum width=0.30cm, minimum height=0.40cm,
+              inner sep=0pt, font=\sffamily\tiny]
+              at ({\x+0.57+0.34*(\i-2)},4.16) {\tokenpos};
+    }
+    \node[font=\sffamily\tiny\bfseries, text=black!72, align=center]
+          at ([yshift=0.48cm]cpd\n.south) {$Q$, $dQ$, and $O$\\[-1pt]stay local};
+}
+
+% The combined sequence is the CP input; neutral group markers avoid implying
+% a particular transport.
+\node[anchor=east, font=\sffamily\tiny\bfseries, text=black!68]
+      at (1.93,5.61) {Forward: $K/V$};
+\draw[groupclean] (2.13,5.74) -- (10.23,5.74);
+\draw[groupcorrupt] (2.13,5.48) -- (10.23,5.48);
+\foreach \x in {3.18,6.18,9.18} {
+    \draw[connector] (\x,5.36) -- (\x,5.74);
+}
+
+% Gradients for both parts of the combined input return to shard owners.
+\node[anchor=east, font=\sffamily\tiny\bfseries, text=black!68]
+      at (1.93,2.89) {Backward: $dK/dV$};
+\draw[groupgradclean] (2.13,3.02) -- (10.23,3.02);
+\draw[groupgradcorrupt] (2.13,2.76) -- (10.23,2.76);
+\foreach \x in {3.18,6.18,9.18} {
+    \draw[connector] (\x,3.20) -- (\x,2.76);
+}
+
+\node[callout, font=\sffamily\tiny] at (12.34,4.28)
+      {$Q$, $dQ$, $O$ stay local\\[-1pt]
+       \textbf{Cross-rank: Clean + Corrupted}\\[-1pt]
+       \textbf{$K/V$ and $dK/dV$}};
+
+% ---------------------------------------------------------------------------
+% CSBP: block b is owned by one rank; other blocks run concurrently.
+% ---------------------------------------------------------------------------
+\node[anchor=east, font=\sffamily\scriptsize\bfseries, text=black!82]
+      at (1.85,1.28) {(b) CSBP};
+
+\node[device, minimum height=2.26cm] (fd1) at (3.18,1.23) {};
+\node[device, minimum height=2.26cm] (fd2) at (6.18,1.23) {};
+\node[ownerdevice, minimum height=2.26cm] (fd3) at (9.18,1.23) {};
+\foreach \r/\n in {1/1,2/2,3/3} {
+    \node[font=\sffamily\scriptsize\bfseries, text=black!76]
+          at ([yshift=-0.33cm]fd\n.north) {Rank \r};
+    \node[font=\sffamily\tiny, text=BPBlue!88!black]
+          at ([yshift=0.53cm]fd\n.center) {Clean $Q/K/V$};
+    \foreach \i in {1,2,3} {
+        \pgfmathtruncatemacro{\tokenpos}{3*(\n-1)+\i}
+        \pgfmathsetmacro{\tokenshift}{0.34*(\i-2)}
+        \node[draw=BPBlue, fill=BPBlue!13, line width=0.65pt,
+              minimum width=0.30cm, minimum height=0.40cm,
+              inner sep=0pt, font=\sffamily\tiny]
+              at ([xshift=\tokenshift cm,yshift=0.20cm]fd\n.center)
+              {\tokenpos};
+    }
+}
+\node[corrupt, draw=BPOrange, fill=BPOrange!15, text=black!85,
+      blockjob, font=\sffamily\tiny] at ([yshift=-0.59cm]fd1.center)
+      {Block $1$: Corrupted\\$Q/K/V + dQ/dK/dV$ local};
+\node[corrupt, draw=BPOrange, fill=BPOrange!15, text=black!85,
+      blockjob, font=\sffamily\tiny] at ([yshift=-0.59cm]fd2.center)
+      {Block $2$: Corrupted\\$Q/K/V + dQ/dK/dV$ local};
+\node[corrupt, blockjob, font=\sffamily\tiny\bfseries]
+      at ([yshift=-0.59cm]fd3.center)
+      {Block $3$: Corrupted\\$Q/K/V + dQ/dK/dV$ local};
+
+% Clean K/V travels to the owner of block 3; corrupted K/V remains local.
+\node[anchor=east, font=\sffamily\tiny\bfseries, text=black!68]
+      at (1.93,2.56) {Forward: $K/V$};
+\draw[fwdclean] (3.18,2.64) -- (9.18,2.64);
+\draw[fwdclean] (6.18,2.48) -- (9.18,2.48);
+\draw[cleanconnector] (fd1.north) -- (3.18,2.64);
+\draw[cleanconnector] (fd2.north) -- (6.18,2.64);
+\draw[cleanconnector] (fd3.north) -- (9.18,2.64);
+
+% Clean-KV gradients return to shard owners; block-3 backward remains on Rank 3.
+\node[anchor=east, font=\sffamily\tiny\bfseries, text=black!68]
+      at (1.93,-0.08) {Backward: $dK/dV$};
+\draw[bwdclean] (9.18,-0.13) -- (3.18,-0.13);
+\draw[bwdclean] (9.18,0.02) -- (6.18,0.02);
+\draw[cleanconnector] (fd1.south) -- (3.18,-0.13);
+\draw[cleanconnector] (fd2.south) -- (6.18,0.02);
+\draw[cleanconnector] (fd3.south) -- (9.18,-0.13);
+
+\node[callout, draw=BPOrange!78, fill=BPOrange!7,
+      font=\sffamily\tiny] at (12.34,1.28)
+      {$Q$, $dQ$, $O$ stay local\\[-1pt]
+       \textbf{Cross-rank: Clean $K/V$}\\[-1pt]
+       \textbf{and Clean $dK/dV$ only}};
+\end{tikzpicture}

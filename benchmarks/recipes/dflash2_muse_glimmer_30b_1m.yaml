@@ -1,0 +1,55 @@
+# Eight H100 80GB GPUs. Replace the feature and checkpoint paths before launch.
+# The 1M context matches the systems configuration used in the paper and is
+# longer than the verifier checkpoint's declared 128K generation context.
+launch:
+  recipe_kind: prod
+  seed: 2026
+model:
+  id: incoai/Muse-Glimmer-30B-DFlash2
+  revision: 8336acb8dc9b8bf9c25f12d7785ee6df26703119
+  family: dflash
+  verifier_id: meta-models/Muse-Glimmer-30B
+  verifier_revision: a4e59da52a7bc87ae7251dd5545c0dd437c44b68
+  target_layer_ids: [2, 14, 26, 38, 50]
+  seq_len: 1048576
+  dtype: bf16
+objective:
+  name: dflash_distillation
+  block_size: 16
+  max_anchors: 512
+  anchor_sampling: locality
+  anchor_group_size: 0
+  dflash_loss: dpace
+  decay_gamma: 7.0
+  dpace_alpha: 0.5
+  lk_loss_type: lambda
+  kl_scale: 1.0
+  kl_decay: 1.0
+  selector_loss_alpha: 1.0
+  dflash_vocab_block_size: 16384
+data:
+  input_mode: dataset
+  target_features: offline
+  target_feature_path: /data/dflash-features
+training:
+  batch_size: 1
+  steps: 1000
+  gradient_accumulation_steps: 1
+  activation_checkpointing: false
+topology:
+  context_parallel_size: 4
+  block_parallel_size: 4
+optimizer:
+  backend: torch_fused_adamw
+  lr: 0.000001
+  gradient_clip_norm: 1.0
+checkpointing:
+  save_checkpoint_dir: ./checkpoints/dflash2-muse-glimmer-30b-1m
+  save_checkpoint_interval: 100
+  keep_last_n: 3
+  auto_resume: true
+  save_final: true
+kernel:
+  runtime_jit: false
+logging:
+  wandb: false

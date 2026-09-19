@@ -1,0 +1,154 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "turbo-dllm"
+version = "0.1.1"
+description = "Highly optimized distributed training for diffusion language models."
+readme = "README.md"
+requires-python = ">=3.10"
+license = "Apache-2.0"
+license-files = ["LICENSE"]
+authors = [{name = "Turbo-dLLM contributors"}]
+keywords = ["diffusion-language-models", "distributed-training", "pytorch"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Typing :: Typed",
+]
+dependencies = [
+    "PyYAML>=6.0,<7",
+    "tomli>=2.0; python_version < '3.11'",
+    "numpy>=1.26,<3",
+    "einops>=0.8,<1",
+    "torch>=2.8,<3",
+    "transformers>=5.0,<6",
+    "huggingface-hub>=0.34,<2",
+    "accelerate>=1.0,<2",
+    "safetensors>=0.4,<1",
+]
+
+[project.urls]
+Documentation = "https://github.com/ScalingIntelligence/Turbo-dLLM/tree/main/docs"
+Issues = "https://github.com/ScalingIntelligence/Turbo-dLLM/issues"
+Source = "https://github.com/ScalingIntelligence/Turbo-dLLM"
+
+[project.optional-dependencies]
+data = ["datasets==4.8.5"]
+capture = [
+    "specforge==0.2.0; sys_platform == 'linux' and python_version >= '3.11' and python_version < '3.14'",
+    "flash-attn-4==4.0.0b15; sys_platform == 'linux' and python_version >= '3.11' and python_version < '3.14'",
+]
+plots = ["wandb>=0.19", "matplotlib>=3.8"]
+logging = ["wandb>=0.19"]
+deepspeed = ["deepspeed>=0.19.2"]
+# Re-declare SGLang's exact pre-release dependency so uv treats that version as
+# an explicit request while producing the universal project lock.
+sglang = [
+    "sglang==0.5.20; sys_platform == 'linux' and python_version < '3.14'",
+    "cuda-tile==1.6.0rc5; sys_platform == 'linux' and python_version < '3.14'",
+    "flash-attn-4==4.0.0b19; sys_platform == 'linux' and python_version < '3.14'",
+]
+vllm = [
+    "vllm==0.29.0; sys_platform == 'linux' and python_version < '3.14'",
+]
+gpu = [
+    "torch==2.10.0",
+    "transformers==5.13.0",
+    "accelerate==1.14.0",
+    "deepspeed==0.19.2",
+    "transformer-engine[core_cu12,pytorch]==2.13.0",
+    "cuda-bindings==12.9.4",
+    "cuda-python==12.9.4",
+    "apache-tvm-ffi==0.1.12",
+    "nvidia-cutlass-dsl==4.5.2",
+    "nvidia-cutlass-dsl-libs-base==4.5.2",
+    "torch-c-dlpack-ext==0.1.5",
+    "quack-kernels==0.5.0",
+]
+qwen3_8 = [
+    "transformers==5.13.0",
+    "transformer-engine[core_cu12,pytorch]==2.13.0",
+    "flash-linear-attention[cuda,conv1d,tilelang]==0.5.2",
+    "tilelang==0.1.13",
+]
+kernel-build = [
+    "build==1.5.0",
+    "ninja==1.13.0",
+    "setuptools-scm==9.2.2",
+    "nvidia-cutlass-dsl==4.5.2",
+    "nvidia-cutlass-dsl-libs-base==4.5.2",
+    "torch-c-dlpack-ext==0.1.5",
+    "quack-kernels==0.5.0",
+]
+test = ["pytest>=8", "omegaconf>=2.3"]
+dev = [
+    "build==1.5.0",
+    "pytest>=8",
+    "omegaconf>=2.3",
+    "wandb>=0.19",
+    "matplotlib>=3.8",
+    "ruff>=0.12",
+]
+
+[project.scripts]
+dllm = "dllm_parallel.cli:main"
+dllm-train = "dllm_parallel.training.entrypoint:main"
+dllm-checkpoint = "dllm_parallel.core.checkpoint:main"
+dllm-release-gate = "dllm_parallel.core.profiling.release_gates:main"
+dllm-build-kernels = "dllm_parallel.core.kernels.build:main"
+dllm-export-diffusiongemma = "dllm_parallel.core.models.backbones.diffusiongemma.export:main"
+
+[tool.setuptools.packages.find]
+include = ["dllm_parallel*"]
+
+[tool.setuptools.package-data]
+"dllm_parallel" = ["py.typed", "recipes/**/*.yaml"]
+"dllm_parallel.core._C" = ["*.so", "*.pyd", "*.dylib", "native_kernels.json"]
+"dllm_parallel.core" = ["csrc/*/*.cpp", "csrc/*/*.cu", "csrc/*/*.cuh", "csrc/*/*.h"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+markers = [
+    "checkpoint_resume: checkpoint save/reload integration contracts",
+    "distributed: multi-process or multi-GPU correctness contracts",
+    "performance: hardware-qualified performance measurements",
+]
+
+[tool.ruff]
+target-version = "py310"
+
+[tool.ruff.lint]
+# Keep the default gate focused on undefined names and dead assignments.
+# scripts/verify/repository.sh additionally enforces full Pyflakes cleanliness
+# for the installable package without coupling release checks to test imports.
+select = ["E9", "F821", "F841"]
+
+[tool.uv]
+# SGLang qualifies the serving/export boundary in its own environment. Its
+# exact Torch/Transformers runtime intentionally differs from the training GPU
+# and Qwen3.8 environments, whose paper-qualified pins must remain unchanged.
+conflicts = [
+    [{ extra = "sglang" }, { extra = "gpu" }],
+    [{ extra = "sglang" }, { extra = "qwen3_8" }],
+    [{ extra = "sglang" }, { extra = "kernel-build" }],
+    [{ extra = "vllm" }, { extra = "sglang" }],
+    [{ extra = "vllm" }, { extra = "gpu" }],
+    [{ extra = "vllm" }, { extra = "qwen3_8" }],
+    [{ extra = "vllm" }, { extra = "kernel-build" }],
+    [{ extra = "capture" }, { extra = "sglang" }],
+    [{ extra = "capture" }, { extra = "vllm" }],
+    [{ extra = "capture" }, { extra = "gpu" }],
+    [{ extra = "capture" }, { extra = "qwen3_8" }],
+    [{ extra = "capture" }, { extra = "kernel-build" }],
+]

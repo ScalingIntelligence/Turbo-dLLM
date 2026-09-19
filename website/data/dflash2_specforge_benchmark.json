@@ -1,0 +1,179 @@
+{
+ "contexts": [
+  65536,
+  131072,
+  262144
+ ],
+ "input_boundary": "synthetic_profile",
+ "schema_version": "dflash2_specforge_synthetic.report.v1",
+ "specforge_adapter_sha": "07b91a670f593fb3718ebc7c190f783ec741e15a",
+ "specforge_oom_counts": {
+  "131072": {
+   "feasible": 4,
+   "oom": 7
+  },
+  "262144": {
+   "feasible": 0,
+   "oom": 9
+  },
+  "65536": {
+   "feasible": 6,
+   "oom": 6
+  }
+ },
+ "speedups": {
+  "131072": 2.293740814758051,
+  "65536": 1.9994717859881674
+ },
+ "topology": "DP8/CP1/BP1",
+ "winners": {
+  "131072:dllm": {
+   "candidate": {
+    "accumulation_steps": 1,
+    "activation_checkpointing": false,
+    "attention_backend": "native",
+    "bp": 1,
+    "cp": 1,
+    "dp": 8,
+    "fsdp_sharding": "none",
+    "library": "dllm",
+    "micro_batch_size": 1,
+    "objective_chunk_blocks": 128,
+    "sequence_length": 131072
+   },
+   "peak_mib": 72086.0,
+   "provenance": {
+    "allocated_peak_mib": 58617.40478515625,
+    "hardware": "8xH100-80GB",
+    "input_boundary": "synthetic_profile",
+    "library": "dllm",
+    "memory_metric": "nvidia_smi_memory_used",
+    "source_sha": "03a5dee656b116628441c43ae5b2f124d2402fba",
+    "timestamp_utc": "2026-09-17T06:50:25Z",
+    "versions": {
+     "cuda": "12.8",
+     "torch": "2.10.0+cu128"
+    }
+   },
+   "supervised_tokens_per_second": 167900.48518567023
+  },
+  "131072:specforge": {
+   "candidate": {
+    "accumulation_steps": 1,
+    "activation_checkpointing": false,
+    "attention_backend": "flex_attention",
+    "bp": 1,
+    "cp": 1,
+    "dp": 8,
+    "fsdp_sharding": "shard_grad_op",
+    "library": "specforge",
+    "micro_batch_size": 1,
+    "objective_chunk_blocks": 128,
+    "sequence_length": 131072
+   },
+   "peak_mib": 80954.0,
+   "provenance": {
+    "hardware": "8xH100-80GB",
+    "input_boundary": "synthetic_profile",
+    "library": "specforge",
+    "memory_metric": "nvidia_smi_memory_used",
+    "source_sha": "07b91a670f593fb3718ebc7c190f783ec741e15a",
+    "timestamp_utc": "2026-09-17T06:57:58Z",
+    "versions": {
+     "cuda": "13.0",
+     "torch": "2.13.0+cu130"
+    }
+   },
+   "supervised_tokens_per_second": 73199.41473133735
+  },
+  "262144:dllm": {
+   "candidate": {
+    "accumulation_steps": 1,
+    "activation_checkpointing": false,
+    "attention_backend": "native",
+    "bp": 1,
+    "cp": 1,
+    "dp": 8,
+    "fsdp_sharding": "none",
+    "library": "dllm",
+    "micro_batch_size": 1,
+    "objective_chunk_blocks": 128,
+    "sequence_length": 262144
+   },
+   "peak_mib": 78664.0,
+   "provenance": {
+    "allocated_peak_mib": 65020.52978515625,
+    "hardware": "8xH100-80GB",
+    "input_boundary": "synthetic_profile",
+    "library": "dllm",
+    "memory_metric": "nvidia_smi_memory_used",
+    "source_sha": "03a5dee656b116628441c43ae5b2f124d2402fba",
+    "timestamp_utc": "2026-09-17T07:11:33Z",
+    "versions": {
+     "cuda": "12.8",
+     "torch": "2.10.0+cu128"
+    }
+   },
+   "supervised_tokens_per_second": 166731.94316446842
+  },
+  "65536:dllm": {
+   "candidate": {
+    "accumulation_steps": 1,
+    "activation_checkpointing": false,
+    "attention_backend": "native",
+    "bp": 1,
+    "cp": 1,
+    "dp": 8,
+    "fsdp_sharding": "none",
+    "library": "dllm",
+    "micro_batch_size": 1,
+    "objective_chunk_blocks": 128,
+    "sequence_length": 65536
+   },
+   "peak_mib": 68884.0,
+   "provenance": {
+    "allocated_peak_mib": 55415.84228515625,
+    "hardware": "8xH100-80GB",
+    "input_boundary": "synthetic_profile",
+    "library": "dllm",
+    "memory_metric": "nvidia_smi_memory_used",
+    "source_sha": "03a5dee656b116628441c43ae5b2f124d2402fba",
+    "timestamp_utc": "2026-09-17T06:27:55Z",
+    "versions": {
+     "cuda": "12.8",
+     "torch": "2.10.0+cu128"
+    }
+   },
+   "supervised_tokens_per_second": 167960.2211475835
+  },
+  "65536:specforge": {
+   "candidate": {
+    "accumulation_steps": 1,
+    "activation_checkpointing": false,
+    "attention_backend": "flex_attention",
+    "bp": 1,
+    "cp": 1,
+    "dp": 8,
+    "fsdp_sharding": "shard_grad_op",
+    "library": "specforge",
+    "micro_batch_size": 1,
+    "objective_chunk_blocks": 128,
+    "sequence_length": 65536
+   },
+   "peak_mib": 75810.0,
+   "provenance": {
+    "hardware": "8xH100-80GB",
+    "input_boundary": "synthetic_profile",
+    "library": "specforge",
+    "memory_metric": "nvidia_smi_memory_used",
+    "source_sha": "07b91a670f593fb3718ebc7c190f783ec741e15a",
+    "timestamp_utc": "2026-09-17T06:35:18Z",
+    "versions": {
+     "cuda": "13.0",
+     "torch": "2.13.0+cu130"
+    }
+   },
+   "supervised_tokens_per_second": 84002.29616872297
+  }
+ }
+}

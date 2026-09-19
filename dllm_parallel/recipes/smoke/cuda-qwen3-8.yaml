@@ -1,0 +1,32 @@
+launch:
+  recipe_kind: smoke
+model:
+  id: Qwen/Qwen3.8-27B
+  revision: 1d4bf0f2ff6012fd82039f2fa52739d0dd7c60c0
+  family: qwen3_8
+  seq_len: 1024
+  mask_token: <|mask|>
+  dtype: bf16
+  max_layers: 4
+objective:
+  name: fast_dllm_v2
+  block_size: 256
+  noise_schedule: linear_mask
+  loss_weighting: unit
+  noise_schedule_epsilon: 0.001
+data:
+  input_mode: random
+training:
+  batch_size: 1
+  steps: 1
+  activation_checkpointing: true
+topology:
+  context_parallel_size: 1
+  block_parallel_size: 1
+  tensor_parallel_size: 4
+  sequence_parallel: true
+kernel:
+  runtime_jit: false
+optimizer:
+  backend: deepspeed_zero2
+  allow_deepspeed_op_build: false

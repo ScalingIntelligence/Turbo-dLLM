@@ -1,0 +1,13 @@
+[build-system]
+requires = [
+    "setuptools>=70.1",
+    "wheel",
+    "packaging",
+    "ninja",
+    "torch>=2.8",
+    "nvidia-cutlass-dsl>=4.5.1,<4.6",
+    "apache-tvm-ffi>=0.1.12,<0.2",
+    "torch-c-dlpack-ext>=0.1.5,<0.2",
+    "quack-kernels>=0.4.1,<0.5",
+]
+build-backend = "setuptools.build_meta"

@@ -1,0 +1,62 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+/build/
+/dist/
+outputs/
+output/
+tmp/
+watch_folder/
+logs/
+sample_logs/
+*.egg-info/
+
+# compiled native kernel artifacts (built by `dllm-build-kernels` from csrc/,
+# packaged into wheels/containers; never committed to source)
+dllm_parallel/core/_C/*.so
+dllm_parallel/core/_C/*.pyd
+dllm_parallel/core/_C/*.dylib
+dllm_parallel/core/_C/native_kernels.json
+bdlm_mfu.txt
+# local agent config / secrets (do not commit)
+.claude/
+k8s/launch-trace-pod.sh
+*.pem
+*_login.txt
+laude.txt
+Scaling Intelligence Lab Compute.pdf
+
+# local reference checkouts used for implementation research
+DeepEP/
+Megatron-LM/
+Nemotron-Labs-Diffusion/
+TransformerEngine/
+torchtitan/
+vllm/
+speculators/
+bd3lms/
+kernel-design-agents/
+mini-swe-agent/
+Terminus-2/
+
+# local research notes and profiling plans
+diffusionblocks_response.txt
+docs/native_fused_cp_bp_plan.md
+
+# LaTeX build artifacts; source and intentional PDF previews remain versioned.
+*.aux
+*.bbl
+*.bcf
+*.blg
+*.fdb_latexmk
+*.fls
+*.lof
+*.log
+*.lot
+*.out
+*.run.xml
+*.synctex.gz
+*.toc

@@ -1,0 +1,11 @@
+Turbo-dLLM
+Copyright 2026 The Turbo-dLLM Authors
+
+This product includes modified FlashAttention source under
+third_party/flash-attention, copyright the FlashAttention authors and
+contributors, licensed under the BSD 3-Clause license in that directory.
+
+The FlashAttention source includes NVIDIA CUTLASS components under their own
+license and notice files. See third_party/flash-attention/csrc/cutlass.
+
+Third-party dependency names and trademarks belong to their respective owners.

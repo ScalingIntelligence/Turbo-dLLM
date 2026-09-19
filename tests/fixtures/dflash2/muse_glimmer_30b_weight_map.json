@@ -1,0 +1,19 @@
+{
+  "draft_tensor_shapes": {
+    "candidate_selector.hidden_projection.weight": [256, 6656],
+    "candidate_selector.predecessor_codebook": [202048, 256],
+    "candidate_selector.successor_codebook": [202048, 256],
+    "fc.weight": [6656, 33280],
+    "layers.0.attention_conv.base_kernel": [2, 2, 6656],
+    "layers.0.mlp.down_proj.weight": [6656, 19968],
+    "layers.0.mlp.gate_proj.weight": [19968, 6656],
+    "layers.0.self_attn.k_proj.weight": [1024, 6656],
+    "layers.0.self_attn.q_proj.weight": [4096, 6656],
+    "layers.0.self_attn.v_proj.weight": [1024, 6656]
+  },
+  "verifier_weight_map": {
+    "lm_head.weight": "model-00002-of-00002.safetensors",
+    "model.language_model.embed_tokens.weight": "model-00001-of-00002.safetensors",
+    "model.language_model.norm.weight": "model-00002-of-00002.safetensors"
+  }
+}

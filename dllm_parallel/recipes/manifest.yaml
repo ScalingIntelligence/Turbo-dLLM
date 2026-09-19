@@ -1,0 +1,77 @@
+format: dllm.recipe_catalog.v1
+recipes:
+  examples/dflash-synthetic:
+    kind: examples
+    summary: DFlash distillation with generated target features.
+    hardware: 2 CUDA GPUs
+    model_family: dflash
+  examples/diffusiongemma-tensor-context:
+    kind: examples
+    summary: Tensor and context parallel DiffusionGemma training.
+    hardware: 4 CUDA GPUs
+    model_family: diffusion_gemma
+  examples/fast-dllm-v2-qwen3:
+    kind: examples
+    summary: Fast-dLLM-v2 objective on a generic Qwen causal model.
+    hardware: 4 CUDA GPUs
+    model_family: causal_lm
+  examples/nemotron-fused-cp-bp:
+    kind: examples
+    summary: Fused context and block parallel Nemotron training.
+    hardware: 4 CUDA GPUs
+    model_family: nemotron_labs_diffusion
+  examples/qwen3-8-tensor-context:
+    kind: examples
+    summary: Tensor and context parallel Qwen3.8 training.
+    hardware: 8 CUDA GPUs
+    model_family: qwen3_8
+  runs/dflash2-muse-glimmer-30b-1m:
+    kind: runs
+    summary: DFlash2 Muse-Glimmer 30B training at 1M context.
+    hardware: 8 H100 80GB GPUs
+    model_family: dflash
+  runs/dflash2-qwen3-8-27b-1m:
+    kind: runs
+    summary: DFlash2 Qwen3.8 27B training at 1M context.
+    hardware: 8 H100 80GB GPUs
+    model_family: dflash
+  runs/diffusiongemma-26b-sft-256k:
+    kind: runs
+    summary: DiffusionGemma 26B native SFT at 256K context.
+    hardware: 16 H200 GPUs
+    model_family: diffusion_gemma
+  runs/qwen3-8-27b-fast-dllm-v2-256k:
+    kind: runs
+    summary: Qwen3.8 27B AR-to-BDLM training at 256K context.
+    hardware: 16 H200 GPUs
+    model_family: qwen3_8
+  smoke/cpu-config:
+    kind: smoke
+    summary: Offline CPU configuration and package validation.
+    hardware: CPU validation
+    model_family: causal_lm
+  smoke/cuda-diffusiongemma:
+    kind: smoke
+    summary: One-step DiffusionGemma CUDA smoke configuration.
+    hardware: 4 CUDA GPUs
+    model_family: diffusion_gemma
+  smoke/cuda-fast-dllm-v2:
+    kind: smoke
+    summary: One-step fast-dLLM-v2 CUDA smoke configuration.
+    hardware: 1 CUDA GPU
+    model_family: causal_lm
+  smoke/cuda-nemotron:
+    kind: smoke
+    summary: One-step Nemotron CUDA smoke configuration.
+    hardware: 4 CUDA GPUs
+    model_family: nemotron_labs_diffusion
+  smoke/cuda-qwen3-8:
+    kind: smoke
+    summary: One-step Qwen3.8 CUDA smoke configuration.
+    hardware: 4 CUDA GPUs
+    model_family: qwen3_8
+  smoke/distributed-fsdp2:
+    kind: smoke
+    summary: Distributed FSDP2 configuration validation.
+    hardware: 2 CUDA GPUs
+    model_family: causal_lm

@@ -1,0 +1,24 @@
+launch:
+  recipe_kind: smoke
+model:
+  id: nvidia/Nemotron-Labs-Diffusion-3B
+  family: auto
+  seq_len: 1024
+  dtype: bf16
+  trust_remote_code: true
+  max_layers: 1
+objective:
+  block_size: 32
+data:
+  input_mode: random
+training:
+  batch_size: 1
+  steps: 1
+topology:
+  context_parallel_size: 4
+  block_parallel_size: 4
+kernel:
+  runtime_jit: false
+optimizer:
+  backend: deepspeed_zero2
+  allow_deepspeed_op_build: false

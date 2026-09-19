@@ -1,0 +1,30 @@
+launch:
+  recipe_kind: smoke
+model:
+  id: Qwen/Qwen3-8B
+  family: causal_lm
+  seq_len: 1024
+  mask_token_id: 151665
+  dtype: bf16
+  max_layers: 1
+objective:
+  name: fast_dllm_v2
+  block_size: 32
+  noise_schedule: linear_mask
+  loss_weighting: unit
+  noise_schedule_epsilon: 0.001
+data:
+  input_mode: random
+training:
+  batch_size: 1
+  steps: 1
+  activation_checkpointing: true
+topology:
+  context_parallel_size: 1
+  block_parallel_size: 1
+  tensor_parallel_size: 1
+  sequence_parallel: false
+kernel:
+  runtime_jit: false
+optimizer:
+  backend: torch_adamw

@@ -1,0 +1,53 @@
+# Eight H100 80GB GPUs. Replace the feature and checkpoint paths before launch.
+launch:
+  recipe_kind: prod
+  seed: 2026
+model:
+  id: incoai/Qwen3.8-27B-DFlash2
+  revision: dedf8df68adfb1afeaf7b7480c0a0243108177b4
+  family: dflash
+  verifier_id: Qwen/Qwen3.8-27B
+  verifier_revision: 1d4bf0f2ff6012fd82039f2fa52739d0dd7c60c0
+  target_layer_ids: [6, 20, 34, 48, 62]
+  seq_len: 1048576
+  dtype: bf16
+objective:
+  name: dflash_distillation
+  block_size: 8
+  max_anchors: 2048
+  anchor_sampling: locality
+  anchor_group_size: 0
+  dflash_loss: dpace
+  decay_gamma: 7.0
+  dpace_alpha: 0.5
+  lk_loss_type: lambda
+  kl_scale: 1.0
+  kl_decay: 1.0
+  selector_loss_alpha: 1.0
+  dflash_vocab_block_size: 32768
+data:
+  input_mode: dataset
+  target_features: offline
+  target_feature_path: /data/dflash-features
+training:
+  batch_size: 1
+  steps: 1000
+  gradient_accumulation_steps: 1
+  activation_checkpointing: false
+topology:
+  context_parallel_size: 2
+  block_parallel_size: 2
+optimizer:
+  backend: torch_fused_adamw
+  lr: 0.000001
+  gradient_clip_norm: 1.0
+checkpointing:
+  save_checkpoint_dir: ./checkpoints/dflash2-qwen3-8-27b-1m
+  save_checkpoint_interval: 100
+  keep_last_n: 3
+  auto_resume: true
+  save_final: true
+kernel:
+  runtime_jit: false
+logging:
+  wandb: false

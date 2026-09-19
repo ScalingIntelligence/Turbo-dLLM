@@ -1,0 +1,31 @@
+launch:
+  recipe_kind: profile
+model:
+  id: nvidia/Nemotron-Labs-Diffusion-3B
+  revision: 0d51902da1f8869f83413ce642fab402fa5641e0
+  family: auto
+  seq_len: 65536
+  dtype: bf16
+  trust_remote_code: true
+objective:
+  block_size: 256
+data:
+  input_mode: random
+training:
+  batch_size: 1
+  steps: 3
+  activation_checkpointing: true
+profiler:
+  warmup_steps: 1
+  phase_timing: true
+  phase_timing_sync: true
+topology:
+  tensor_parallel_size: 1
+  sequence_parallel: false
+  context_parallel_size: 4
+  block_parallel_size: 4
+kernel:
+  runtime_jit: false
+optimizer:
+  backend: deepspeed_zero2
+  allow_deepspeed_op_build: false

@@ -1,0 +1,99 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+jobs:
+  portable:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      attestations: write
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: astral-sh/setup-uv@v6
+      - name: Verify tag and package version
+        run: |
+          VERSION="$(python -c 'import tomllib; print(tomllib.load(open("pyproject.toml", "rb"))["project"]["version"])')"
+          test "${GITHUB_REF_NAME}" = "v${VERSION}"
+          test -z "$(git status --porcelain)"
+      - name: Verify version is unpublished on PyPI
+        run: python scripts/verify/pypi_release.py --tag "$GITHUB_REF_NAME"
+      - run: uv pip install --system -e ".[test,dev]"
+      - run: ruff check dllm_parallel tests
+      - run: python -m pytest -q tests/unit tests/packaging tests/release
+      - run: uv lock --check
+      - name: Build portable wheel and source distribution
+        run: scripts/build/build_portable.sh --python python --output-dir dist
+      - name: Inspect portable artifact boundary
+        run: scripts/verify/portable_artifacts.sh --python python --directory dist
+      - name: Generate portable checksums
+        run: |
+          mkdir -p reports
+          (cd dist && sha256sum * > ../reports/SHA256SUMS)
+      - uses: anchore/sbom-action/download-syft@v0
+      - name: Generate portable SBOMs
+        run: |
+          for artifact in dist/*; do
+            scripts/build/generate_sbom.sh \
+              --artifact "$artifact" \
+              --output "reports/$(basename "$artifact").cdx.json"
+          done
+      - uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: "dist/*"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: portable-dist
+          path: dist/*
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        with:
+          name: portable-reports
+          path: reports/*
+          if-no-files-found: error
+
+  publish-pypi:
+    needs: portable
+    runs-on: ubuntu-24.04
+    environment:
+      name: pypi
+      url: https://pypi.org/project/turbo-dllm/
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: portable-dist
+          path: dist
+      - uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dist
+
+  github-release:
+    needs: publish-pypi
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: "portable-*"
+          path: release-assets
+          merge-multiple: true
+      - name: Publish immutable release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" release-assets/* --generate-notes --verify-tag

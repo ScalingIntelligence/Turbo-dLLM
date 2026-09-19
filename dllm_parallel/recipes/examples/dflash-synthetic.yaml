@@ -1,0 +1,36 @@
+launch:
+  recipe_kind: profile
+model:
+  id: z-lab/Qwen3.5-27B-DFlash
+  family: dflash
+  verifier_id: Qwen/Qwen3.5-27B
+  target_layer_ids: [2, 11, 19, 28, 36, 45, 53, 62]
+  seq_len: 1048576
+  dtype: bf16
+objective:
+  name: dflash_distillation
+  block_size: 16
+  max_anchors: 512
+  dflash_loss: speculators_kl
+  decay_gamma: 4.0
+data:
+  input_mode: dataset
+  target_features: synthetic
+training:
+  batch_size: 1
+  steps: 3
+  activation_checkpointing: true
+profiler:
+  warmup_steps: 1
+debug:
+  grad_finite: true
+  optimizer_finite: true
+topology:
+  context_parallel_size: 2
+  block_parallel_size: 1
+optimizer:
+  backend: deepspeed_zero2
+  lr: 0.000001
+  gradient_clip_norm: 1.0
+kernel:
+  runtime_jit: false

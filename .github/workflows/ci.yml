@@ -1,0 +1,84 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main, 'release/**']
+
+permissions:
+  contents: read
+
+jobs:
+  portable:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.12", "3.14"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+      - name: Install portable development environment
+        run: uv pip install --system -e ".[test,dev]"
+      - name: Static correctness
+        run: ruff check dllm_parallel tests
+      - name: Repository and configuration contracts
+        run: scripts/verify/repository.sh --python python
+      - name: Portable test gate
+        run: python -m pytest -q tests/unit tests/packaging tests/release
+      - name: Check locked dependencies
+        run: uv lock --check
+
+  checkpoint-resume:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: astral-sh/setup-uv@v6
+      - run: uv pip install --system -e ".[test]"
+      - run: scripts/verify/checkpoint_resume.sh --python python
+
+  package:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    needs: [portable, checkpoint-resume]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: astral-sh/setup-uv@v6
+      - name: Install packaging test environment
+        run: uv pip install --system ".[test]" build
+      - name: Build portable artifacts
+        run: scripts/build/build_portable.sh --python python --output-dir dist
+      - name: Inspect portable artifacts
+        run: |
+          scripts/verify/portable_artifacts.sh --python python --directory dist
+          python -m pytest -q tests/packaging tests/release
+      - name: Install wheel outside the checkout
+        run: |
+          python -m venv --system-site-packages "$RUNNER_TEMP/wheel-venv"
+          "$RUNNER_TEMP/wheel-venv/bin/python" -m pip install --force-reinstall --no-deps dist/*.whl
+          cd "$RUNNER_TEMP"
+          "$RUNNER_TEMP/wheel-venv/bin/dllm" doctor
+          "$RUNNER_TEMP/wheel-venv/bin/dllm" init starter
+          cd starter
+          "$RUNNER_TEMP/wheel-venv/bin/dllm" config validate --config train.yaml
+          "$RUNNER_TEMP/wheel-venv/bin/dllm" launch --config train.yaml --dry-run
+          cd ..
+          "$RUNNER_TEMP/wheel-venv/bin/dllm" config validate --recipe smoke/cpu-config
+      - uses: actions/upload-artifact@v4
+        with:
+          name: portable-dist
+          path: dist/*
+          if-no-files-found: error

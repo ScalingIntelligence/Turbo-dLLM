@@ -1,0 +1,7 @@
+/build/
+/dist/
+/*.egg-info/
+/flash_attn_config.py
+/flash_attn_3/_C*.so
+/flash_attn_3/_C*.pyd
+/flash_attn_3/build_metadata.json

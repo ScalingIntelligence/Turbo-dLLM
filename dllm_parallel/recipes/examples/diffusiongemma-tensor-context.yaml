@@ -1,0 +1,33 @@
+launch:
+  recipe_kind: profile
+model:
+  id: google/diffusiongemma-26B-A4B-it
+  revision: f7f5b7f5fa82ffc52addd066915886d497f5517b
+  family: auto
+  seq_len: 32768
+  dtype: bf16
+  trust_remote_code: true
+objective:
+  block_size: 256
+data:
+  input_mode: random
+training:
+  batch_size: 2
+  steps: 100
+  activation_checkpointing: true
+profiler:
+  warmup_steps: 3
+  phase_timing: true
+  phase_timing_sync: true
+topology:
+  tensor_parallel_size: 2
+  sequence_parallel: true
+  # TE Userbuffers regress this model's compact TP2 sequence-parallel rows.
+  tensor_parallel_overlap: false
+  context_parallel_size: 2
+  block_parallel_size: 2
+kernel:
+  runtime_jit: false
+optimizer:
+  backend: deepspeed_zero2
+  allow_deepspeed_op_build: false

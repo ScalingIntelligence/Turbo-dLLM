@@ -1,0 +1,59 @@
+{
+ "source": [
+  "docs/nemo_automodel_14b_256k_cp8_profile.md",
+  "block_parallel_paper/tables/two_node_h200_1p2_results.tex"
+ ],
+ "model": "NemotronDiffusion 14B",
+ "hardware": "16xH200",
+ "metric": "aggregate input tokens/s",
+ "comparison": "best-fit stack: each library's fastest feasible configuration",
+ "notes": [
+  "Our rows are the CSBP topologies from the paper (tables/two_node_h200_1p2_results.tex).",
+  "AutoModel rows are the best-fit stack from docs/nemo_automodel_14b_256k_cp8_profile.md; it consumes two GPUs per replica for TP and therefore runs half the global batch.",
+  "Advantage is our throughput divided by AutoModel's."
+ ],
+ "rows": [
+  {
+   "context_tokens": 65536,
+   "ours": {
+    "topology": "DP8/CP2/BP2",
+    "input_tokens_per_second": 22152,
+    "peak_hbm_gib": 89.8
+   },
+   "automodel": {
+    "topology": "DP4/TP2/CP2/SP",
+    "input_tokens_per_second": 2934.28,
+    "peak_hbm_gib": 114.05
+   },
+   "advantage": 7.55
+  },
+  {
+   "context_tokens": 131072,
+   "ours": {
+    "topology": "DP4/CP4/BP4",
+    "input_tokens_per_second": 15136,
+    "peak_hbm_gib": 90.1
+   },
+   "automodel": {
+    "topology": "DP2/TP2/CP4/SP",
+    "input_tokens_per_second": 2155.47,
+    "peak_hbm_gib": 114.05
+   },
+   "advantage": 7.02
+  },
+  {
+   "context_tokens": 262144,
+   "ours": {
+    "topology": "DP2/CP8/BP8",
+    "input_tokens_per_second": 9301,
+    "peak_hbm_gib": 90.6
+   },
+   "automodel": {
+    "topology": "DP1/TP2/CP8/SP",
+    "input_tokens_per_second": 633.14,
+    "peak_hbm_gib": 130.08
+   },
+   "advantage": 14.69
+  }
+ ]
+}
