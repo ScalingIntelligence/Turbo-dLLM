@@ -63,15 +63,19 @@ then qualifies them on two SM90 GPUs. GPU qualification must succeed before
 PyPI publication. The GitHub release stays a draft until every asset is
 uploaded successfully. No self-hosted runner is needed.
 
-To repair an unpublished tagged release after an orchestration failure, run
+For v0.1.4 or newer tags with the runtime-wheel manifest format, repair an
+unpublished release after an orchestration failure by running
 **Release** from the `main` branch with its immutable version tag. The
 portable artifacts and native wheels are built from that tag, even when the
-workflow repair is newer. The `pypi` environment allows `v*` tags. A repair from `main` also requires
-that environment to allow the `main` branch during the repair. Published PyPI versions cannot
-be overwritten.
+workflow repair is newer. The `pypi` environment allows `v*` tags. A repair
+from `main` also requires that environment to allow the `main` branch during
+the repair. Published PyPI versions cannot be overwritten.
 
-For an existing portable-only release, run **GPU validation** from Actions
-with its version tag. This builds the exact tagged commit without
+For a compatible v0.1.4 or newer release missing GPU assets, run
+**GPU validation** from Actions with its version tag. The older v0.1.1
+installer and manifest do not support the new runtime wheels; upgrade
+instead of backfilling that portable-only release. Validation builds the
+exact tagged commit without
 republishing PyPI. Successful runs upload the wheels, compatibility
 manifest, qualification reports, checksums, and SBOMs; `gpu-bundles.json`
 is uploaded last so automatic installation cannot select an unfinished
