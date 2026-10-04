@@ -93,6 +93,15 @@ def test_release_workflows_have_a_gated_publish_graph() -> None:
     )
 
 
+def test_reusable_gpu_caller_allows_the_nested_publisher_permission_ceiling() -> None:
+    caller = _workflow("release.yml")["jobs"]["gpu"]
+    nested = _workflow("gpu-validation.yml")["jobs"]
+    # GitHub validates skipped jobs too. Qualification still uses read access.
+    assert nested["publish-existing-release"]["permissions"]["contents"] == "write"
+    assert caller["permissions"]["contents"] == "write"
+    assert nested["qualify"]["permissions"]["contents"] == "read"
+
+
 def test_release_uploads_are_complete_before_the_draft_is_published() -> None:
     job = _workflow("release.yml")["jobs"]["github-release"]
     commands = next(step["run"] for step in job["steps"] if "run" in step)
