@@ -90,7 +90,7 @@ jobs:
       MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
       MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
     permissions:
-      contents: read
+      contents: write
       id-token: write
       attestations: write
 

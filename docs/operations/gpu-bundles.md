@@ -12,7 +12,7 @@ version printed by `nvidia-smi` is the driver limit; bundle selection uses
 Install the matching bundle automatically:
 
 ```bash
-dllm bundle install --release v0.1.2 --auto
+dllm bundle install --release v0.1.3 --auto
 ```
 
 The installer verifies every downloaded wheel and runs `dllm doctor
@@ -25,14 +25,14 @@ GPU kernels, and installing the `gpu` extra alone does not supply them.
 Check the release assets or follow [native development](../development/native.md).
 
 Version v0.1.1 published only portable artifacts. Upgrade the installer before
-selecting the v0.1.2 bundle:
+selecting the v0.1.3 bundle:
 
 ```bash
-python -m pip install --upgrade "turbo-dllm==0.1.2"
-dllm bundle install --release v0.1.2 --auto
+python -m pip install --upgrade "turbo-dllm==0.1.3"
+dllm bundle install --release v0.1.3 --auto
 ```
 
-The v0.1.2 installer explicitly replaces same-version portable and native
+The v0.1.3 installer explicitly replaces same-version portable and native
 wheels after resolving the GPU runtime dependencies. This avoids pip
 retaining an already-installed portable wheel.
 
