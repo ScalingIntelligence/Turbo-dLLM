@@ -49,6 +49,7 @@ from dllm_parallel.core.models.backbones.qwen3_8.token_local import (
     reconstruct_pure_cp_token_rows,
     select_pure_cp_logical_rows,
 )
+from dllm_parallel.core.parallel.transformer_engine import load_transformer_engine
 from dllm_parallel.core.parallel.runtime import active_blocks_for_runtime
 
 
@@ -390,7 +391,7 @@ def verify_qwen38_runtime() -> dict[str, Any]:
         from causal_conv1d import causal_conv1d_fn  # noqa: F401
         from fla.ops.common.backends.tilelang import TileLangBackend
         from fla.ops.gated_delta_rule import chunk_gated_delta_rule  # noqa: F401
-        from transformer_engine.pytorch import Linear as TELinear  # noqa: F401
+        load_transformer_engine().Linear
     except ImportError as exc:
         raise RuntimeError(
             "Qwen3.8 production training requires "
@@ -2287,7 +2288,7 @@ def _build_qwen38_te_layernorm_column_linear(
     """Fuse Qwen's input RMSNorm with its packed TP/SP mixer projection."""
 
     try:
-        from transformer_engine.pytorch import LayerNormLinear
+        LayerNormLinear = load_transformer_engine().LayerNormLinear
     except Exception as exc:  # pragma: no cover - depends on runtime image.
         raise RuntimeError(
             "Qwen3.8 TP/SP training requires transformer_engine.pytorch.LayerNormLinear"
@@ -2354,7 +2355,7 @@ def _build_qwen38_te_layernorm_mlp(
     """Build Qwen's RMSNorm-SwiGLU MLP with TE's fused TP/SP module."""
 
     try:
-        from transformer_engine.pytorch import LayerNormMLP
+        LayerNormMLP = load_transformer_engine().LayerNormMLP
     except Exception as exc:  # pragma: no cover - depends on runtime image.
         raise RuntimeError(
             "Qwen3.8 TP/SP training requires transformer_engine.pytorch.LayerNormMLP"

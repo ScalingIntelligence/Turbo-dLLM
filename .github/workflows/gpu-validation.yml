@@ -22,7 +22,7 @@ on:
       release_tag:
         description: Existing release to supply with qualified GPU assets
         required: true
-        default: v0.1.4
+        default: v0.1.5
         type: string
 
       publish_existing_release:

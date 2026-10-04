@@ -251,6 +251,16 @@ def install_wheels() -> None:
         check=True,
     )
     subprocess.run([python, "-m", "pip", "check"], check=True)
+    # Catch native runtime loading failures on CPU before allocating GPUs.
+    subprocess.run(
+        [
+            python,
+            "-c",
+            "from dllm_parallel.core.parallel.transformer_engine import load_transformer_engine; load_transformer_engine()",
+        ],
+        check=True,
+        cwd="/tmp",
+    )
 
 
 def cache_smoke_model() -> None:

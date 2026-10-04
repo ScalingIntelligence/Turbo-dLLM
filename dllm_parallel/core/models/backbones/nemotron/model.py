@@ -31,6 +31,7 @@ from dllm_parallel.core.attention.layout import (
     clear_sequence_layout_caches,
     runtime_clean_layout,
 )
+from dllm_parallel.core.parallel.transformer_engine import load_transformer_engine
 from dllm_parallel.core.parallel.runtime import (
     active_clean_prefix_length,
     active_token_indices,
@@ -3846,7 +3847,7 @@ def _build_te_packed_layer_projections(
 
 def _transformer_engine_linear_cls() -> type[nn.Module]:
     try:
-        from transformer_engine.pytorch import Linear as TELinear
+        TELinear = load_transformer_engine().Linear
     except Exception as exc:  # pragma: no cover - depends on runtime image.
         raise RuntimeError(
             "Nemotron TP packed training requires transformer_engine.pytorch.Linear"
@@ -3865,7 +3866,7 @@ def _build_te_rmsnorm_column_linear(
     """Fuse a Gemma4 RMSNorm with its packed TP/SP column projection."""
 
     try:
-        from transformer_engine.pytorch import LayerNormLinear
+        LayerNormLinear = load_transformer_engine().LayerNormLinear
     except Exception as exc:  # pragma: no cover - depends on production image.
         raise RuntimeError(
             "Gemma4 TP/SP training requires transformer_engine.pytorch.LayerNormLinear"
@@ -4151,12 +4152,12 @@ def _build_te_gated_activation(
     ):
         return None
     try:
-        from transformer_engine.pytorch.ops import Sequential, SwiGLU
+        ops = load_transformer_engine("transformer_engine.pytorch.ops")
     except Exception as exc:  # pragma: no cover - validated in production image.
         raise RuntimeError(
             "Nemotron TP requires Transformer Engine's native SwiGLU operation"
         ) from exc
-    return Sequential(SwiGLU())
+    return ops.Sequential(ops.SwiGLU())
 
 
 def _te_gated_mlp_forward(
