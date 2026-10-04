@@ -10,6 +10,7 @@ from pathlib import Path
 
 from dllm_parallel.core.kernels.bundle_manifest import (
     BundleEnvironment,
+    RUNTIME_DISTRIBUTIONS,
     create_bundle_catalog,
     read_bundle_manifest,
     validate_bundle_manifest,
@@ -47,6 +48,13 @@ def prepare_assets(
             cuda=str(manifest.get("cuda", "")),
             compute_capability=str((manifest.get("architectures") or [""])[0]),
         )
+        runtime = manifest.get("runtime_artifacts", [])
+        if {item["name"].split("-", 1)[0] for item in runtime} != set(
+            RUNTIME_DISTRIBUTIONS
+        ):
+            raise ValueError(
+                "release bundles require prebuilt DeepSpeed and Transformer Engine PyTorch wheels"
+            )
         for artifact in validate_bundle_manifest(manifest, environment=environment):
             wheel = directory / str(artifact["name"])
             if artifact["url"] != f"{base_url.rstrip('/')}/{wheel.name}":

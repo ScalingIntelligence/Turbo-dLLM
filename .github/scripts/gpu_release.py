@@ -13,6 +13,7 @@ from pathlib import Path
 
 SOURCE = Path("/opt/dllm/source")
 DIST = Path("/opt/dllm/dist")
+ATTENTION = Path("/opt/dllm/attention")
 
 
 def build_wheels() -> None:
@@ -20,6 +21,8 @@ def build_wheels() -> None:
 
     if torch.version.cuda != "12.8":
         raise RuntimeError(f"expected CUDA 12.8 PyTorch, got {torch.version.cuda}")
+    attention = ATTENTION
+    extra = ["--attention-wheels-dir", str(attention)] if attention.is_dir() else []
     subprocess.run(
         [
             "bash",
@@ -30,22 +33,181 @@ def build_wheels() -> None:
             "9.0",
             "--output-dir",
             str(DIST),
+            *extra,
         ],
         check=True,
         cwd=SOURCE,
     )
 
+    if attention.is_dir():
+        shutil.copy2(
+            attention / "attention-provenance.json", DIST / "attention-provenance.json"
+        )
 
-def install_wheels() -> None:
-    package = next(DIST.glob("turbo_dllm-*.whl"))
-    native = sorted(path for path in DIST.glob("*.whl") if path != package)
+
+def validate_cached_attention(wheels: list[Path], revision: str) -> None:
+    import hashlib
+    import sysconfig
+    import zipfile
+    import torch
+
+    if f"+bdlm.{revision[:12]}-" not in wheels[1].name:
+        raise RuntimeError("cached FA4 source revision mismatch")
+    with zipfile.ZipFile(wheels[0]) as archive:
+        metadata = json.loads(archive.read("flash_attn_3/build_metadata.json"))
+        if metadata["source"]["revision"] != revision:
+            raise RuntimeError("cached FA3 source revision mismatch")
+        build = metadata["build"]
+        if (
+            build["torch"] != str(torch.__version__)
+            or build["torch_cuda"] != torch.version.cuda
+            or build["python_extension_suffix"]
+            != sysconfig.get_config_var("EXT_SUFFIX")
+            or build["cxx11_abi"] != bool(torch._C._GLIBCXX_USE_CXX11_ABI)
+            or build["cuda_architectures"] != ["sm_90a"]
+        ):
+            raise RuntimeError("cached attention ABI mismatch")
+        binary = metadata["binary"]
+        if hashlib.sha256(archive.read(binary["path"])).hexdigest() != binary["sha256"]:
+            raise RuntimeError("cached attention binary checksum mismatch")
+
+
+def prepare_source(release: str, revision: str, repository: str) -> None:
+    """Reuse attention only inside the same immutable toolchain image."""
+    import hashlib
+    import os
+
+    def git(*arguments: str) -> str:
+        return subprocess.check_output(
+            ["git", "-C", str(SOURCE), *arguments], text=True
+        ).strip()
+
+    def profile(text: str) -> list[str]:
+        return re.findall(r"(?:BUILD_TARGET|FLASH_ATTENTION_[A-Z0-9_]+)=[^\s\\]+", text)
+
+    shutil.rmtree(ATTENTION, ignore_errors=True)
+    old_revision = git("rev-parse", "HEAD")
+    paths = (
+        "third_party/flash-attention/hopper",
+        "third_party/flash-attention/flash_attn/cute",
+        "third_party/flash-attention/csrc/cutlass/include",
+    )
+    old_trees = {path: git("rev-parse", f"HEAD:{path}") for path in paths}
+    old_profile = profile((SOURCE / "scripts/build/build_cuda_wheels.sh").read_text())
+    git("fetch", "--no-tags", "--depth=1", "origin", f"refs/tags/{release}")
+    if git("rev-parse", "FETCH_HEAD^{commit}") != revision:
+        raise RuntimeError("release tag revision mismatch")
+    git("checkout", "--detach", revision)
+    current_trees = {path: git("rev-parse", f"HEAD:{path}") for path in paths}
+    if old_trees != current_trees or old_profile != profile(
+        (SOURCE / "scripts/build/build_cuda_wheels.sh").read_text()
+    ):
+        print("Attention inputs changed; rebuilding all wheels")
+        shutil.rmtree(DIST)
+        return
+    import torch
+    import sysconfig
+
+    cache = ATTENTION
+    cache.mkdir()
+    wheels = [
+        next(DIST.glob(pattern))
+        for pattern in ("bdlm_flash_attn_3-*.whl", "flash_attn_4-*.whl")
+    ]
+    validate_cached_attention(wheels, old_revision)
+    records = []
+    for wheel in wheels:
+        shutil.copy2(wheel, cache / wheel.name)
+        records.append(
+            {
+                "name": wheel.name,
+                "sha256": hashlib.sha256(wheel.read_bytes()).hexdigest(),
+                "source_revision": old_revision,
+            }
+        )
+    (cache / "attention-provenance.json").write_text(
+        json.dumps(
+            {
+                "immutable_build_image": os.environ["DLLM_ATTENTION_IMAGE"],
+                "source_trees": old_trees,
+                "build_profile": old_profile,
+                "python_abi": sysconfig.get_config_var("SOABI"),
+                "torch": str(torch.__version__),
+                "cxx11_abi": bool(torch._C._GLIBCXX_USE_CXX11_ABI),
+                "cuda": subprocess.check_output(["nvcc", "--version"], text=True),
+                "architectures": "9.0",
+                "components": records,
+            },
+            indent=2,
+        )
+        + "\n"
+    )
+    shutil.rmtree(DIST)
+
+
+def build_runtime_wheels() -> None:
+    """Compile the two sdist-only dependencies against the pinned Torch ABI."""
+    import os
+    import tomllib
+    from packaging.requirements import Requirement
+
+    requirements = tomllib.loads((SOURCE / "pyproject.toml").read_text())["project"][
+        "optional-dependencies"
+    ]["gpu"]
+    wanted = {"deepspeed", "transformer-engine"}
+    selected = [
+        "transformer-engine-torch" + str(Requirement(item).specifier)
+        if Requirement(item).name == "transformer-engine"
+        else item
+        for item in requirements
+        if Requirement(item).name in wanted
+    ]
+    if len(selected) != 2:
+        raise RuntimeError("expected two pinned prebuilt runtime dependencies")
     subprocess.run(
         [
             sys.executable,
             "-m",
             "pip",
-            "install",
+            "wheel",
+            "--no-deps",
             "--no-build-isolation",
+            "--wheel-dir",
+            str(DIST),
+            *selected,
+        ],
+        check=True,
+        env={**os.environ, "DS_BUILD_OPS": "0", "NVTE_PYTORCH_FORCE_BUILD": "TRUE"},
+        cwd="/tmp",
+    )
+
+
+def install_wheels() -> None:
+    """Resolve every runtime dependency as a wheel in a new isolated venv."""
+    python = "/opt/dllm/clean/bin/python"
+    subprocess.run([sys.executable, "-m", "venv", "/opt/dllm/clean"], check=True)
+    subprocess.run(
+        [
+            python,
+            "-m",
+            "pip",
+            "install",
+            "--only-binary=:all:",
+            "torch==2.10.0",
+            "--index-url",
+            "https://download.pytorch.org/whl/cu128",
+        ],
+        check=True,
+    )
+    package = next(DIST.glob("turbo_dllm-*.whl"))
+    native = sorted(path for path in DIST.glob("*.whl") if path != package)
+    subprocess.run(
+        [
+            python,
+            "-m",
+            "pip",
+            "install",
+            "--only-binary=:all:",
             f"turbo-dllm[gpu,test] @ {package.as_uri()}",
             *map(str, native),
         ],
@@ -54,19 +216,30 @@ def install_wheels() -> None:
     )
     subprocess.run(
         [
+            "bash",
+            str(SOURCE / "scripts/build/build_portable.sh"),
+            "--python",
             sys.executable,
+            "--output-dir",
+            "/opt/dllm/portable",
+        ],
+        check=True,
+        cwd="/tmp",
+    )
+    portable = next(Path("/opt/dllm/portable").glob("*.whl"))
+    subprocess.run(
+        [
+            python,
             "-m",
             "pip",
             "install",
             "--force-reinstall",
             "--no-deps",
-            str(package),
-            *map(str, native),
+            str(portable),
         ],
         check=True,
-        cwd="/tmp",
     )
-    subprocess.run([sys.executable, "-m", "pip", "check"], check=True)
+    subprocess.run([python, "-m", "pip", "check"], check=True)
 
 
 def cache_smoke_model() -> None:
@@ -92,7 +265,45 @@ def qualify(release: str, revision: str, repository: str) -> list[str]:
         raise RuntimeError("qualification requires SM90 GPUs")
     reports = Path("/tmp/qualification")
     reports.mkdir()
-    python = sys.executable
+    python = "/opt/dllm/clean/bin/python"
+    base_url = f"https://github.com/{repository}/releases/download/{release}"
+    subprocess.run(
+        [
+            python,
+            "-m",
+            "dllm_parallel.core.kernels.bundle_manifest",
+            "create",
+            "--directory",
+            str(DIST),
+            "--output",
+            str(DIST / "gpu-sm90-cu128-cp312.json"),
+            "--base-url",
+            base_url,
+            "--cuda",
+            "12.8",
+            "--architectures",
+            "9.0",
+            "--python-abi",
+            "cp312",
+            "--platform",
+            "linux_x86_64",
+            "--package-version",
+            release.removeprefix("v"),
+            "--source-revision",
+            revision,
+        ],
+        check=True,
+        cwd="/tmp",
+    )
+    subprocess.run(
+        [
+            python,
+            str(SOURCE / ".github/scripts/verify_bundle_install.py"),
+            str(DIST / "gpu-sm90-cu128-cp312.json"),
+        ],
+        check=True,
+        cwd="/tmp",
+    )
     subprocess.run(["dllm", "doctor", "--training"], check=True, cwd="/tmp")
     smoke = reports / "smoke.yaml"
     subprocess.run(
@@ -137,35 +348,6 @@ def qualify(release: str, revision: str, repository: str) -> list[str]:
             check=True,
             cwd="/tmp",
         )
-    base_url = f"https://github.com/{repository}/releases/download/{release}"
-    subprocess.run(
-        [
-            python,
-            "-m",
-            "dllm_parallel.core.kernels.bundle_manifest",
-            "create",
-            "--directory",
-            str(DIST),
-            "--output",
-            str(DIST / "gpu-sm90-cu128-cp312.json"),
-            "--base-url",
-            base_url,
-            "--cuda",
-            "12.8",
-            "--architectures",
-            "9.0",
-            "--python-abi",
-            "cp312",
-            "--platform",
-            "linux_x86_64",
-            "--package-version",
-            release.removeprefix("v"),
-            "--source-revision",
-            revision,
-        ],
-        check=True,
-        cwd="/tmp",
-    )
     (DIST / "qualification-sm90-cu128-cp312.json").write_text(
         json.dumps(
             {
@@ -177,6 +359,9 @@ def qualify(release: str, revision: str, repository: str) -> list[str]:
                 "devices": [torch.cuda.get_device_name(i) for i in range(2)],
                 "suites": list(suites),
                 "doctor": "passed",
+                "binary_only_clean_environment": "passed",
+                "portable_to_native_installer": "passed",
+                "build_image": __import__("os").environ.get("DLLM_ATTENTION_IMAGE"),
                 "smoke": "passed",
             },
             indent=2,
@@ -194,6 +379,7 @@ def qualify(release: str, revision: str, repository: str) -> list[str]:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--attention-image", default="")
     parser.add_argument("--release", required=True)
     parser.add_argument("--revision", required=True)
     parser.add_argument("--repository", default="ScalingIntelligence/Turbo-dLLM")
@@ -207,6 +393,10 @@ def main() -> None:
         parser.error("repository must be owner/name")
     import modal
 
+    if args.attention_image and not re.fullmatch(
+        r"im-[A-Za-z0-9]+", args.attention_image
+    ):
+        parser.error("attention image must be an immutable Modal image ID")
     image = (
         modal.Image.from_registry(
             "nvidia/cuda:12.8.1-devel-ubuntu24.04", add_python="3.12"
@@ -234,7 +424,21 @@ def main() -> None:
             f"test $(git -C {SOURCE} rev-parse HEAD) = {args.revision}",
             f"python -m pip install --no-build-isolation '{SOURCE}[test,kernel-build]'",
         )
-        .run_function(build_wheels, cpu=8, memory=32768, timeout=7200)
+    )
+    if args.attention_image:
+        image = (
+            modal.Image.from_id(args.attention_image)
+            .env({"DLLM_ATTENTION_IMAGE": args.attention_image})
+            .run_function(
+                prepare_source,
+                args=(args.release, args.revision, args.repository),
+                cpu=2,
+                memory=4096,
+                timeout=300,
+            )
+        )
+    image = (
+        image.run_function(build_wheels, cpu=8, memory=32768, timeout=7200)
         .env(
             {
                 "CPATH": "/usr/local/lib/python3.12/site-packages/nvidia/cudnn/include",
@@ -242,7 +446,16 @@ def main() -> None:
                 "LIBRARY_PATH": "/usr/local/lib/python3.12/site-packages/nvidia/cudnn/lib",
             }
         )
+        .pip_install(
+            "transformer-engine[core_cu12]==2.13.0", "cmake==4.0.3", "pybind11==3.0.1"
+        )
+        .run_function(build_runtime_wheels, cpu=8, memory=32768, timeout=3600)
         .run_function(install_wheels, cpu=8, memory=32768, timeout=3600)
+        .env(
+            {
+                "PATH": "/opt/dllm/clean/bin:/usr/local/cuda/bin:/usr/local/bin:/usr/bin:/bin"
+            }
+        )
         .run_function(cache_smoke_model, cpu=2, memory=4096, timeout=1200)
     )
     volume = modal.Volume.from_name("turbo-dllm-release-assets", create_if_missing=True)

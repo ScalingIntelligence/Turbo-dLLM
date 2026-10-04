@@ -12,7 +12,7 @@ version printed by `nvidia-smi` is the driver limit; bundle selection uses
 Install the matching bundle automatically:
 
 ```bash
-dllm bundle install --release v0.1.3 --auto
+dllm bundle install --release v0.1.4 --auto
 ```
 
 The installer verifies every downloaded wheel and runs `dllm doctor
@@ -25,14 +25,14 @@ GPU kernels, and installing the `gpu` extra alone does not supply them.
 Check the release assets or follow [native development](../development/native.md).
 
 Version v0.1.1 published only portable artifacts. Upgrade the installer before
-selecting the v0.1.3 bundle:
+selecting the v0.1.4 bundle:
 
 ```bash
-python -m pip install --upgrade "turbo-dllm==0.1.3"
-dllm bundle install --release v0.1.3 --auto
+python -m pip install --upgrade "turbo-dllm==0.1.4"
+dllm bundle install --release v0.1.4 --auto
 ```
 
-The v0.1.3 installer explicitly replaces same-version portable and native
+The v0.1.4 installer explicitly replaces same-version portable and native
 wheels after resolving the GPU runtime dependencies. This avoids pip
 retaining an already-installed portable wheel.
 
@@ -66,8 +66,8 @@ uploaded successfully. No self-hosted runner is needed.
 To repair an unpublished tagged release after an orchestration failure, run
 **Release** from the `main` branch with its immutable version tag. The
 portable artifacts and native wheels are built from that tag, even when the
-workflow repair is newer. The `pypi` environment allows `v*` tags and the
-`main` branch for this verified repair path. Published PyPI versions cannot
+workflow repair is newer. The `pypi` environment allows `v*` tags. A repair from `main` also requires
+that environment to allow the `main` branch during the repair. Published PyPI versions cannot
 be overwritten.
 
 For an existing portable-only release, run **GPU validation** from Actions
@@ -87,3 +87,18 @@ checkpoint resume, and performance instrumentation suites. Compilation
 uses a cached CUDA development image, and smoke model downloads run on CPU
 before allocating GPUs. GPU allocation is limited to the
 qualification step, with no automatic retries.
+
+The release builder also supplies Transformer Engine PyTorch and DeepSpeed
+wheels. Installation resolves GPU dependencies with `--only-binary=:all:` in
+a clean Python environment; a missing binary dependency stops installation
+instead of silently compiling against a different PyTorch ABI. DeepSpeed
+optional custom operations are not precompiled by this bundle.
+
+The qualified build uses Ubuntu 24.04, CPython 3.12, PyTorch 2.10.0 and CUDA
+12.8 on SM90. Other Linux baselines require independent compatibility checks.
+An optional `GPU_ATTENTION_IMAGE` repository variable selects an immutable
+Modal build image containing previously built attention wheels. Reuse requires
+identical vendor source trees, build flags and wheel ABI metadata; the image
+preserves the entire original compiler toolchain. `attention-provenance.json`
+records the cached component revisions and hashes separately from the release
+revision. Changed source inputs trigger a complete rebuild.
