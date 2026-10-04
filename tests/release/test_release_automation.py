@@ -58,7 +58,9 @@ def test_release_workflows_have_a_gated_publish_graph() -> None:
     assert "workflow_call" in gpu["on"]
     qualify = gpu["jobs"]["qualify"]
     assert qualify["runs-on"] == "ubuntu-24.04"
-    assert {"MODAL_TOKEN_ID", "MODAL_TOKEN_SECRET"} <= set(gpu["on"]["workflow_call"]["secrets"])
+    assert {"MODAL_TOKEN_ID", "MODAL_TOKEN_SECRET"} <= set(
+        gpu["on"]["workflow_call"]["secrets"]
+    )
     assert {
         "Build and qualify coordinated GPU wheels",
         "Verify GPU release assets and create catalog",
@@ -81,9 +83,7 @@ def test_release_workflows_have_a_gated_publish_graph() -> None:
         "contents": "read",
         "id-token": "write",
     }
-    assert release["jobs"]["github-release"]["permissions"] == {
-        "contents": "write"
-    }
+    assert release["jobs"]["github-release"]["permissions"] == {"contents": "write"}
     assert set(release["jobs"]["github-release"]["needs"]) == {"publish-pypi", "gpu"}
     assert "pypa/gh-action-pypi-publish@release/v1" in _used_actions(
         release["jobs"]["publish-pypi"]
@@ -105,7 +105,9 @@ def test_reusable_gpu_caller_allows_the_nested_publisher_permission_ceiling() ->
 def test_release_uploads_are_complete_before_the_draft_is_published() -> None:
     job = _workflow("release.yml")["jobs"]["github-release"]
     commands = next(step["run"] for step in job["steps"] if "run" in step)
-    assert commands.index("--draft --generate-notes") < commands.index("publish_gpu_assets.py")
+    assert commands.index("--draft --generate-notes") < commands.index(
+        "publish_gpu_assets.py"
+    )
     assert commands.index("publish_gpu_assets.py") < commands.index("--draft=false")
     assert 'test "$DRAFT" = true' in commands
 
@@ -118,7 +120,7 @@ class _PyPIResponseHandler(BaseHTTPRequestHandler):
         self.send_response(type(self).status)
         self.send_header("Content-Type", "application/json")
         self.end_headers()
-        self.wfile.write(b'{}')
+        self.wfile.write(b"{}")
 
     def log_message(self, format: str, *args: object) -> None:
         del format, args
@@ -178,9 +180,7 @@ def test_pypi_preflight_rejects_a_tag_version_mismatch(tmp_path: Path) -> None:
 
 
 def test_gpu_wheel_smoke_uses_a_clean_dependency_resolving_environment() -> None:
-    runner = (ROOT / ".github/scripts/gpu_release.py").read_text(
-        encoding="utf-8"
-    )
+    runner = (ROOT / ".github/scripts/gpu_release.py").read_text(encoding="utf-8")
     assert "turbo-dllm[gpu,test]" in runner
     assert 'SOURCE / "tests/unit/attention"' in runner
     assert 'SOURCE / "tests/unit/kernels"' in runner
@@ -210,11 +210,20 @@ def test_gpu_backfill_publishes_only_after_qualification_and_verification() -> N
     gpu = _workflow("gpu-validation.yml")
     publish = gpu["jobs"]["publish-existing-release"]
     assert publish["needs"] == "qualify"
-    assert "workflow_dispatch" in publish["if"]
+    assert publish["if"] == "inputs.publish_existing_release"
+    assert (
+        gpu["on"]["workflow_call"]["inputs"]["publish_existing_release"]["default"]
+        == "false"
+    )
+    assert (
+        gpu["on"]["workflow_dispatch"]["inputs"]["publish_existing_release"]["default"]
+        == "true"
+    )
     assert publish["permissions"]["contents"] == "write"
     release = _workflow("release.yml")
     download = next(
-        step for step in release["jobs"]["github-release"]["steps"]
+        step
+        for step in release["jobs"]["github-release"]["steps"]
         if step.get("uses") == "actions/download-artifact@v4"
     )
     assert "pattern" not in download["with"]
@@ -265,7 +274,7 @@ def test_cuda_wheel_snapshot_keeps_builder_but_not_generated_artifacts(
 def test_release_publishes_portable_artifacts() -> None:
     workflow = (ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
 
-    assert '--directory release-assets --release "$GITHUB_REF_NAME"' in workflow
+    assert '--directory release-assets --release "$RELEASE_TAG"' in workflow
     assert "portable-dist" in workflow
     assert "portable-reports" in workflow
 
@@ -406,3 +415,92 @@ def test_dflash_serving_verifiers_expose_help_without_optional_runtimes() -> Non
         )
         assert completed.returncode == 0, completed.stderr
         assert "DFlash2" in completed.stdout or "DFLASH" in completed.stdout
+
+
+def test_gpu_source_resolution_handles_checkout_lightweight_tag(tmp_path: Path) -> None:
+    source, checkout = tmp_path / "origin", tmp_path / "checkout"
+    source.mkdir()
+
+    def git(root: Path, *args: str) -> str:
+        return subprocess.check_output(
+            ["git", "-C", str(root), *args], text=True
+        ).strip()
+
+    git(source, "init", "-q")
+    git(
+        source,
+        "-c",
+        "user.name=Release test",
+        "-c",
+        "user.email=release@example.invalid",
+        "commit",
+        "--allow-empty",
+        "-qm",
+        "source",
+    )
+    revision = git(source, "rev-parse", "HEAD")
+    git(
+        source,
+        "-c",
+        "user.name=Release test",
+        "-c",
+        "user.email=release@example.invalid",
+        "tag",
+        "-a",
+        "v0.1.3",
+        "-m",
+        "release",
+    )
+    checkout.mkdir()
+    git(checkout, "init", "-q")
+    git(checkout, "remote", "add", "origin", str(source))
+    git(checkout, "fetch", "--no-tags", "--depth=1", "origin", revision)
+    git(checkout, "checkout", "-q", "--detach", "FETCH_HEAD")
+    git(checkout, "tag", "v0.1.3", "HEAD")
+    environment = tmp_path / "github.env"
+    job = _workflow("gpu-validation.yml")["jobs"]["qualify"]
+    commands = next(
+        step["run"]
+        for step in job["steps"]
+        if step.get("name") == "Resolve immutable release source"
+    )
+    result = subprocess.run(
+        ["bash", "-e", "-c", commands],
+        cwd=checkout,
+        env={**os.environ, "RELEASE_TAG": "v0.1.3", "GITHUB_ENV": str(environment)},
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0, result.stderr
+    assert environment.read_text().strip() == f"SOURCE_REVISION={revision}"
+    assert git(checkout, "rev-parse", "refs/tags/v0.1.3") == revision
+
+
+def test_release_repair_builds_the_requested_tag_instead_of_the_workflow_branch() -> (
+    None
+):
+    release = _workflow("release.yml")
+    assert (
+        release["on"]["workflow_dispatch"]["inputs"]["release_tag"]["required"]
+        == "true"
+    )
+    assert (
+        release["env"]["RELEASE_TAG"] == "${{ inputs.release_tag || github.ref_name }}"
+    )
+    portable = release["jobs"]["portable"]
+    checkout = next(
+        step for step in portable["steps"] if step.get("uses") == "actions/checkout@v4"
+    )
+    assert checkout["with"]["ref"] == "${{ inputs.release_tag || github.ref }}"
+    assert release["jobs"]["gpu"]["with"]["publish_existing_release"] == "false"
+    assert (
+        release["jobs"]["gpu"]["with"]["release_tag"]
+        == "${{ inputs.release_tag || github.ref_name }}"
+    )
+    commands = "\n".join(
+        step.get("run", "")
+        for job in release["jobs"].values()
+        for step in job.get("steps", [])
+    )
+    assert "$GITHUB_REF_NAME" not in commands
+    assert "${GITHUB_REF_NAME}" not in commands
