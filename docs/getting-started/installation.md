@@ -21,11 +21,23 @@ uses a supported Python version.
 
 ## Install GPU support
 
-Install the bundle matching your Python, CUDA version, and GPU:
+For the qualified SM90 bundle, use Linux x86_64 and Python 3.12. Set up
+a fresh environment with the matching PyTorch CUDA runtime:
 
 ```bash
+python3.12 -m venv .venv-gpu
+source .venv-gpu/bin/activate
+python -m pip install --upgrade pip
+python -m pip install torch==2.10.0 --index-url https://download.pytorch.org/whl/cu128
+python -m pip install "turbo-dllm==0.1.2"
 dllm bundle install --release v0.1.2 --auto
+dllm doctor --training
 ```
+
+For an existing Python 3.12 environment, upgrade Turbo-dLLM to v0.1.2 and
+install the same PyTorch CUDA 12.8 runtime before selecting the bundle.
+Bundle selection uses `torch.version.cuda`, not the driver version printed
+by `nvidia-smi`.
 
 The command selects and verifies the correct native wheels. If no supported
 bundle matches your system, it reports the detected environment and available
