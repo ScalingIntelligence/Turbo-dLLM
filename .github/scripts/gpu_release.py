@@ -185,7 +185,9 @@ def build_runtime_wheels() -> None:
 def install_wheels() -> None:
     """Resolve every runtime dependency as a wheel in a new isolated venv."""
     python = "/opt/dllm/clean/bin/python"
-    subprocess.run([sys.executable, "-m", "venv", "/opt/dllm/clean"], check=True)
+    subprocess.run(
+        [sys.executable, "-m", "venv", "--clear", "/opt/dllm/clean"], check=True
+    )
     subprocess.run(
         [
             python,
@@ -208,11 +210,14 @@ def install_wheels() -> None:
             "pip",
             "install",
             "--only-binary=:all:",
-            f"turbo-dllm[gpu,test] @ {package.as_uri()}",
+            f"turbo-dllm[gpu] @ {package.as_uri()}",
             *map(str, native),
         ],
         check=True,
         cwd="/tmp",
+    )
+    subprocess.run(
+        [python, "-m", "pip", "install", "--only-binary=:all:", "pytest>=8"], check=True
     )
     subprocess.run(
         [
