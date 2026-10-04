@@ -6,6 +6,9 @@ official implementation of context-sharded block parallelism for scaling
 training to large contexts, plus typed configuration, prepared-data runtimes,
 checkpointing, and optimized CUDA kernels.
 
+Paper: [Block Parallelism For Efficient Distributed Long-Context Diffusion
+Language Model Training](https://arxiv.org/abs/2609.19242)
+
 ## Install
 
 Install the portable package for configuration, data preparation, APIs, and
@@ -112,6 +115,22 @@ back.
 - [GPU bundles](docs/operations/gpu-bundles.md)
 - [API](docs/api/index.md)
 - [Contributing](CONTRIBUTING.md) and [security](SECURITY.md)
+
+## Citation
+
+If you use Turbo-dLLM in your research, please cite:
+
+```bibtex
+@misc{suresh2026blockparallelismefficientdistributed,
+  title = {Block Parallelism For Efficient Distributed Long-Context Diffusion Language Model Training},
+  author = {Tarun Suresh and Pranshu Chaturvedi and Hangoo Kang and Parth Shroff and Ishan S. Khare and Hermann Kumbong and Azalia Mirhoseini},
+  year = {2026},
+  eprint = {2609.19242},
+  archivePrefix = {arXiv},
+  primaryClass = {cs.LG},
+  url = {https://arxiv.org/abs/2609.19242}
+}
+```
 
 ## License
 
