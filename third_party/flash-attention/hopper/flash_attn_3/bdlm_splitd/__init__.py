@@ -350,7 +350,7 @@ def bdlm_splitd_forward(
   splitd_forward, _, mask_mod, _ = _dsl_backend()
   # The masked kernel initializes skipped rows before launch; allocating here
   # avoids paying for the same memset twice.
-  output = torch.empty_like(query)
+  output = torch.empty_like(query, dtype=torch.float32)
   lse = torch.empty(
     (int(query.shape[0]), int(query.shape[2]), int(query.shape[1])),
     dtype=torch.float32,
@@ -482,7 +482,7 @@ def splitd_interval_forward(
       mask="sparse_interval" if sparse else ("bounded_interval" if bounded else "interval"),
     )
   splitd_forward, _, _, mask_mod = _dsl_backend()
-  output = torch.empty_like(query)
+  output = torch.empty_like(query, dtype=torch.float32)
   lse = torch.empty(
     (int(query.shape[0]), int(query.shape[2]), int(query.shape[1])),
     dtype=torch.float32,
@@ -772,7 +772,7 @@ class _BDLMSplitDAttention(torch.autograd.Function):
     ctx.scale = float(scale)
     ctx.clean_offset = int(clean_offset)
     ctx.full_mask = bool(full_mask)
-    return output, lse
+    return output.to(dtype=query.dtype), lse
 
   @staticmethod
   def backward(
@@ -812,7 +812,7 @@ class _SplitDFullAttention(torch.autograd.Function):
     output, lse = splitd_full_forward(query, key, value, float(scale))
     ctx.save_for_backward(query, key, value, output, lse)
     ctx.scale = float(scale)
-    return output, lse
+    return output.to(dtype=query.dtype), lse
 
   @staticmethod
   def backward(

@@ -495,6 +495,7 @@ def test_wide_full_attention_output_lse_and_backward_match_dense(
     grad_lse = torch.randn(1, 16, 48, device=device, dtype=torch.float32)
 
     output, lse = wide_full_attention_bshd(query, key, value, scale)
+    assert output.dtype == query.dtype
     expected, expected_lse = _dense_attention(
         query_ref,
         key_ref,
@@ -564,6 +565,7 @@ def test_wide_bdlm_attention_and_backward_match_dense(
         clean_offset,
         full_mask=full_mask,
     )
+    assert output.dtype == query.dtype
     expected, expected_lse = _dense_attention(
         query_ref, key_ref, value_ref, allowed, scale
     )
@@ -643,7 +645,7 @@ def test_wide_interval_shard_backward_reuses_merged_state(
         scale,
         plan,
     )
-    grad_output = torch.randn_like(output)
+    grad_output = torch.randn_like(query)
     grad_lse = torch.randn_like(lse)
     shard_gradients = []
     for start, stop in ((0, key_len // 2), (key_len // 2, key_len)):
@@ -788,7 +790,7 @@ def test_sparse_interval_worklist_matches_bounded_schedule() -> None:
     sparse_output, sparse_lse = wide_bdlm_interval_forward_bhsd(
         query, key, value, *metadata, 1.0, sparse_plan
     )
-    grad_output = torch.randn_like(bounded_output)
+    grad_output = torch.randn_like(query)
     grad_lse = torch.randn_like(bounded_lse)
     bounded_gradients = wide_bdlm_interval_backward_from_state_bhsd(
         query,
@@ -880,7 +882,7 @@ def test_wide_interval_backward_zeros_unreachable_key_tiles() -> None:
         value,
         output,
         lse,
-        torch.randn_like(output),
+        torch.randn_like(query),
         None,
         *metadata,
         1.0,
@@ -958,7 +960,7 @@ def test_wide_interval_backward_zeros_unreachable_query_tiles() -> None:
         value,
         output,
         lse,
-        torch.randn_like(output),
+        torch.randn_like(query),
         None,
         *metadata,
         1.0,
@@ -1025,7 +1027,8 @@ def test_diffusiongemma_global_attention_32k_backward_matches_dense() -> None:
         1.0,
         plan,
     )
-    grad_output = torch.randn_like(output)
+    assert output.dtype == torch.float32
+    grad_output = torch.randn_like(query)
     grad_lse = torch.randn_like(lse)
     actual_dq, actual_dk, actual_dv = wide_bdlm_interval_backward_from_state_bhsd(
         query,
@@ -1108,7 +1111,7 @@ def test_diffusiongemma_global_attention_production_geometry_is_finite() -> None
         value,
         output,
         lse,
-        torch.randn_like(output),
+        torch.randn_like(query),
         torch.randn_like(lse),
         *metadata,
         1.0,

@@ -264,7 +264,7 @@ class _WideFullAttention(torch.autograd.Function):
         output, lse = _raw_forward(query, key, value, float(scale))
         ctx.save_for_backward(query, key, value, output, lse)
         ctx.scale = float(scale)
-        return output, lse
+        return output.to(dtype=query.dtype), lse
 
     @staticmethod
     def backward(
@@ -277,6 +277,17 @@ class _WideFullAttention(torch.autograd.Function):
             query, key, value, output, lse, grad_output, grad_lse, ctx.scale
         )
         return *gradients, None
+
+
+def wide_full_forward_bshd(
+    query: torch.Tensor,
+    key: torch.Tensor,
+    value: torch.Tensor,
+    scale: float,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """Compute full attention state, retaining native FP32 output for backward."""
+
+    return _raw_forward(query, key, value, float(scale))
 
 
 def wide_full_attention_bshd(
@@ -1714,7 +1725,7 @@ class _WideBDLMAttention(torch.autograd.Function):
         ctx.clean_offset = int(clean_offset)
         ctx.full_mask = bool(full_mask)
         ctx.plan = plan
-        return output, lse
+        return output.to(dtype=query.dtype), lse
 
     @staticmethod
     def backward(
@@ -1827,5 +1838,6 @@ __all__ = [
     "wide_bdlm_attention_bshd",
     "wide_bdlm_backward_bshd",
     "wide_full_attention_bshd",
+    "wide_full_forward_bshd",
     "wide_full_backward_bshd",
 ]

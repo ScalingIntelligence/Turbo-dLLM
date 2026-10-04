@@ -112,7 +112,7 @@ def _splitd_forward_sm90(
     pack_gqa = qhead_per_kvhead > 1
 
   device = q.device
-  out_torch_dtype = q.dtype
+  out_torch_dtype = torch.float32
   q_batch_seqlen_shape = (batch_size,
                           seqlen_q) if cu_seqlens_q is None else (total_q, )
   lse_shape = (batch_size, num_head,

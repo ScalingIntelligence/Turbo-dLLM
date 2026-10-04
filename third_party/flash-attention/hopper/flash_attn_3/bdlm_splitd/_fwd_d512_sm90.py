@@ -308,10 +308,12 @@ class BDLMSplitDFwdSm90:
     # Type check (inlined, SplitD has no mSeqUsedQ/K)
     if const_expr(
       not (
-        mQ.element_type == mK.element_type == mV.element_type == mO.element_type
+        mQ.element_type == mK.element_type == mV.element_type
       )
     ):
-      raise TypeError("All tensors must have the same data type")
+      raise TypeError("Q/K/V tensors must have the same data type")
+    if const_expr(mO.element_type != Float32):
+      raise TypeError("Forward output state must be Float32")
     if const_expr(mQ.element_type not in [cutlass.Float16, cutlass.BFloat16]):
       raise TypeError("Only Float16 or BFloat16 is supported")
     if const_expr(mLSE is not None and mLSE.element_type != Float32):
@@ -363,7 +365,7 @@ class BDLMSplitDFwdSm90:
     self.use_tma_Q = self.arch >= Arch.sm_90 and not (
       self.pack_gqa and self.tile_m % self.qhead_per_kvhead != 0
     )
-    self.use_tma_O = self.use_tma_Q
+    self.use_tma_O = False  # FP32 state is stored directly from accumulators.
 
     # ═══ SMEM layouts (full-D Q/K, multi-stage K/V pipeline) ═══
     # sQ: full-D (64×512), single stage. QK becomes one full-D WGMMA.
@@ -406,7 +408,7 @@ class BDLMSplitDFwdSm90:
     )
     # sO: half-width double-staged (64 KB total) — one slot per MMA WG.
     self.sO_layout = sm90_utils.make_smem_layout(
-      mO.element_type,
+      self.dtype,
       LayoutEnum.ROW_MAJOR,
       (self.tile_m, self.tile_hdimv_half),
       stage=2,
@@ -1662,45 +1664,27 @@ class BDLMSplitDFwdSm90:
     wg_idx: cutlass.Constexpr[int],
     write_lse: cutlass.Constexpr[bool] = False,
   ):
-    """per-WG epilogue with concurrent sO writes (Opt-3, dual-slot sO).
-
-        sO has 2 stages — WG1 owns sO[0], WG2 owns sO[1]. Both WGs STSM into
-        their own slot and fire TMA store_O concurrently. Only 2 Epilogue
-        barriers remain:
-          1) sync at start (sV → sO union-slot lifetime transition)
-          2) final sync (TMA stores complete before next tile reuses SMEM)
-
-        LSE writes only happen in WG1 and use gmem directly (no sO conflict),
-        so they happen before the sO write region.
-        """
-    # Convert acc_O (fp32) → rO (bf16) in registers — per-thread, no SMEM.
-    rO = cute.make_fragment_like(acc_O, self.dtype)
-    rO.store(acc_O.load().to(self.dtype))
-
-    # SMEM/TMA fragments (compile-time setup; no SMEM access yet)
-    smem_copy_atom_O = utils.get_smem_store_atom(
-      self.arch.major * 10 + self.arch.minor, self.dtype
-    )
-    smem_thr_copy_O = cute.make_tiled_copy_C(smem_copy_atom_O,
-                                             tiled_mma_pv).get_slice(tidx)
-    taccOrO = smem_thr_copy_O.retile(rO)
-    taccOsO = smem_thr_copy_O.partition_D(sO[None, None, wg_idx])
-
+    """Store FP32 output state directly, with LSE written by WG1."""
+    # Save the accumulator without BF16/FP16 rounding. The backward row-dot
+    # cancels dP against dO*O; rounding O makes scale-1 low-entropy gradients
+    # inaccurate. Direct stores avoid doubling the sV/sO union beyond SM90's
+    # shared-memory limit.
     ragged = seqlen.has_cu_seqlens_q
     mO_cur = seqlen.offset_batch_Q(mO, batch_idx, dim=3,
                                    ragged=ragged)[None, None, head_idx]
     gO = cute.local_tile(
       mO_cur, (self.tile_m, self.tile_hdimv_half), (m_block, wg_idx)
     )
-    store_O, _, _ = copy_utils.tma_get_copy_fn(
-      tma_atom_O,
-      0,
-      cute.make_layout(1),
-      sO[None, None, wg_idx],
-      gO,
-      single_stage=True,
-    )
-    warp_idx_in_wg = cute.arch.make_warp_uniform(cute.arch.warp_idx()) % 4
+    thr_mma = tiled_mma_pv.get_slice(tidx)
+    taccOgO = thr_mma.partition_C(gO)
+    cO = cute.make_identity_tensor((self.tile_m, self.tile_hdimv_half))
+    taccOcO = thr_mma.partition_C(cO)
+    row_limit = seqlen.seqlen_q
+    if const_expr(self.pack_gqa):
+      row_limit = row_limit * self.qhead_per_kvhead
+    for i in cutlass.range(cute.size(acc_O), unroll_full=True):
+      if m_block * self.tile_m + taccOcO[i][0] < row_limit:
+        taccOgO[i] = acc_O[i]
 
     # ── LSE: WG1 only, gmem-only write (no sO interaction) ──
     if const_expr(write_lse and mLSE is not None):
@@ -1739,21 +1723,8 @@ class BDLMSplitDFwdSm90:
           mLSE_cur, lse, tiled_mma_pv, tidx, m_block, seqlen.seqlen_q
         )
 
-    # ── Concurrent epilogue: WG1→sO[0], WG2→sO[1] (dual-slot sO) ──
-    cute.arch.fence_view_async_shared()
-    cute.arch.barrier(
-      barrier_id=int(NamedBarrierFwd.Epilogue),
-      number_of_threads=self.num_mma_threads,
-    )
-    cute.copy(smem_copy_atom_O, taccOrO, taccOsO)
-    cute.arch.fence_view_async_shared()
-    if warp_idx_in_wg == 0:
-      store_O()
-      cute.arch.cp_async_bulk_commit_group()
-      cute.arch.cp_async_bulk_wait_group(0, read=True)
-    # Final barrier: both WGs' TMA store_O have committed and the SMEM
-    # union slot is free again — required so the next work-tile can safely
-    # reuse the slot for sV loads.
+    # Keep both MMA groups at the same tile boundary before the producer
+    # reuses their shared V storage for the next work tile.
     cute.arch.barrier(
       barrier_id=int(NamedBarrierFwd.Epilogue),
       number_of_threads=self.num_mma_threads,

@@ -43,7 +43,7 @@ def _make_fake_bwd_preprocess_tensors(dtype, varlen_q):
   seqlen_q_rounded = sym()
   total_q, total_q_rounded = sym(), sym()
   b_seqlenq = (b, seqlen_q) if not varlen_q else (total_q, )
-  mO = fake_tensor(dtype, (*b_seqlenq, h_q, d_v), divisibility=div)
+  mO = fake_tensor(Float32, (*b_seqlenq, h_q, d_v), divisibility=4)
   mdO = fake_tensor(dtype, (*b_seqlenq, h_q, d_v), divisibility=div)
   if not varlen_q:
     mLSE = fake_tensor(Float32, (b, h_q, seqlen_q), divisibility=1)
@@ -230,7 +230,7 @@ def _splitd_backward_sm90(
   else:
     out_shape = (batch_size, seqlen_q, num_head, head_dim_v)
     lse_shape = (batch_size, num_head, seqlen_q)
-  _validate_tensor(out, "out", out_shape, out_torch_dtype, device)
+  _validate_tensor(out, "out", out_shape, torch.float32, device)
   _validate_tensor(dout, "dout", out_shape, out_torch_dtype, device)
   _validate_tensor(lse, "lse", lse_shape, torch.float32, device)
   if dlse is not None:

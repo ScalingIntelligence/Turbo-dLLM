@@ -10,11 +10,16 @@ backward gradients for Q, K, V, and an optional LSE gradient.
 - GPU architecture: SM90a (Hopper)
 - Tensor layout: BSHD
 - Head dimension: 512
-- Dtypes: BF16 and FP16
+- Q/K/V and output-gradient dtypes: BF16 and FP16
+- Raw forward output and merged backward state: FP32
 - Q heads per KV head: 1, 2, 4, or 8
 - Mask modes: dense, clean-prefix/full block diffusion, and exact packed
   clean-context intervals
 - Metadata: contiguous CUDA query/key coordinates, intervals, and clean roles
+
+Autograd attention wrappers save the FP32 forward state and return the input
+dtype to the model. Keep raw state in FP32 through distributed merges: rounding
+the output before computing the backward row-dot loses scale-1 accuracy.
 
 Masked calls use a nonnegative logical `key_start`. Full block-diffusion masks
 are selected explicitly with `full_mask=True` and require a positive

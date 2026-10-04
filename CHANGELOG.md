@@ -9,6 +9,7 @@
 - Replace an installed portable wheel during same-version GPU installation.
 - Load packaged cuDNN automatically and verify Split-D build/runtime ABI pins.
 - Correct FA4 CUDA stream ordering and reverse sparse-mask backward metadata.
+- Preserve FP32 Split-D forward and merged state for scale-1 backward accuracy.
 - Gate publication on clean installation, training, GPU correctness, distributed
   execution, checkpoint resume, and performance instrumentation.
 - Include verified checksums, source provenance, SBOMs, and build attestations.
