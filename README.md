@@ -23,19 +23,22 @@ dllm doctor
 ```
 
 GPU training uses a bundle matched to the host's Python, CUDA, and GPU
-architecture:
+architecture.
+
+The qualified target is Python 3.12, CUDA 12.8, Linux x86_64, and SM90
+(H100/H200). Install a CUDA 12.8 PyTorch runtime before selecting the bundle:
 
 ```bash
-dllm bundle install --release v0.1.1 --auto
+dllm bundle install --release v0.1.2 --auto
 ```
 
-The installer downloads only an exact supported bundle and verifies its native
+The installer downloads an exact supported bundle and verifies its native
 artifacts. See [installation](docs/getting-started/installation.md) for source
 installs, offline mirrors, and model-specific extras.
 
 ## Start training
 
-Create an editable starter project:
+Create a starter project:
 
 ```bash
 dllm init ./my-run
@@ -66,10 +69,9 @@ For speculative training and deployment, follow the
 
 ## Data and recipes
 
-The preparation frontend accepts Hugging Face datasets, JSONL, Parquet, text,
-and token IDs. It supports text, chat messages, prompt/completion records, and
-token-level supervision while keeping tokenization outside the GPU training
-loop.
+Prepare Hugging Face datasets, JSONL, Parquet, text, or token IDs with text,
+chat, prompt/completion, and token-level supervision. Tokenization runs
+outside the GPU training loop.
 
 ```bash
 python -m pip install 'turbo-dllm[data]'
@@ -78,7 +80,7 @@ dllm data inspect data/prepared
 dllm data stats data/prepared
 ```
 
-Packaged recipes provide small validation runs and focused examples:
+Explore packaged recipes:
 
 ```bash
 dllm recipe list
