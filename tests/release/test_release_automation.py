@@ -181,7 +181,7 @@ def test_pypi_preflight_rejects_a_tag_version_mismatch(tmp_path: Path) -> None:
 
 def test_gpu_wheel_smoke_uses_a_clean_dependency_resolving_environment() -> None:
     runner = (ROOT / ".github/scripts/gpu_release.py").read_text(encoding="utf-8")
-    assert "turbo-dllm[gpu,test]" in runner
+    assert "turbo-dllm[gpu]" in runner
     assert 'SOURCE / "tests/unit/attention"' in runner
     assert 'SOURCE / "tests/unit/kernels"' in runner
 

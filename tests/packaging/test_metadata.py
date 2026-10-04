@@ -58,7 +58,7 @@ def test_portable_metadata_offers_coordinated_gpu_and_model_extras() -> None:
         "transformers==5.13.0",
         "accelerate==1.14.0",
         "deepspeed==0.19.2",
-        "transformer-engine[core_cu12,pytorch]==2.13.0",
+        "transformer-engine[core-cu12,pytorch]==2.13.0",
         "cuda-bindings==12.9.4",
         "cuda-python==12.9.4",
         "apache-tvm-ffi==0.1.12",
@@ -67,7 +67,7 @@ def test_portable_metadata_offers_coordinated_gpu_and_model_extras() -> None:
         "torch-c-dlpack-ext==0.1.5",
         "quack-kernels==0.5.0",
     }.issubset(extras["gpu"])
-    assert "transformer-engine[core_cu12,pytorch]==2.13.0" in extras["qwen3_8"]
+    assert "transformer-engine[core-cu12,pytorch]==2.13.0" in extras["qwen3_8"]
     assert "deepep" not in extras
     dependencies = [
         *project.get("dependencies", []),
