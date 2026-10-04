@@ -32,13 +32,13 @@ The qualified target is Python 3.12, CUDA 12.8, Linux x86_64, and SM90
 dllm bundle install --release v0.1.2 --auto
 ```
 
-The installer downloads only an exact supported bundle and verifies its native
+The installer downloads an exact supported bundle and verifies its native
 artifacts. See [installation](docs/getting-started/installation.md) for source
 installs, offline mirrors, and model-specific extras.
 
 ## Start training
 
-Create an editable starter project:
+Create a starter project:
 
 ```bash
 dllm init ./my-run
