@@ -57,22 +57,20 @@ def test_release_workflows_have_a_gated_publish_graph() -> None:
     gpu = _workflow("gpu-validation.yml")
     assert "workflow_call" in gpu["on"]
     qualify = gpu["jobs"]["qualify"]
-    assert {"self-hosted", "gpu"} <= set(qualify["runs-on"])
+    assert qualify["runs-on"] == "ubuntu-24.04"
+    assert {"MODAL_TOKEN_ID", "MODAL_TOKEN_SECRET"} <= set(gpu["on"]["workflow_call"]["secrets"])
     assert {
-        "Build coordinated native wheels",
-        "Verify wheel identities and native manifests",
-        "GPU smoke",
-        "Attention and kernel correctness",
-        "Distributed correctness",
-        "Checkpoint resume",
-        "Performance instrumentation smoke",
+        "Build and qualify coordinated GPU wheels",
+        "Verify GPU release assets and create catalog",
     } <= _step_names(qualify)
 
     release = _workflow("release.yml")
     assert release["permissions"] == {"contents": "read"}
     assert release["on"]["push"]["tags"] == ["v*"]
-    assert set(release["jobs"]) == {"portable", "publish-pypi", "github-release"}
-    assert release["jobs"]["publish-pypi"]["needs"] == "portable"
+    assert set(release["jobs"]) == {"portable", "gpu", "publish-pypi", "github-release"}
+    assert release["jobs"]["gpu"]["needs"] == "portable"
+    assert release["jobs"]["gpu"]["uses"] == "./.github/workflows/gpu-validation.yml"
+    assert set(release["jobs"]["publish-pypi"]["needs"]) == {"portable", "gpu"}
     assert release["jobs"]["publish-pypi"]["environment"]["name"] == "pypi"
     assert release["jobs"]["portable"]["permissions"] == {
         "attestations": "write",
@@ -86,13 +84,21 @@ def test_release_workflows_have_a_gated_publish_graph() -> None:
     assert release["jobs"]["github-release"]["permissions"] == {
         "contents": "write"
     }
-    assert release["jobs"]["github-release"]["needs"] == "publish-pypi"
+    assert set(release["jobs"]["github-release"]["needs"]) == {"publish-pypi", "gpu"}
     assert "pypa/gh-action-pypi-publish@release/v1" in _used_actions(
         release["jobs"]["publish-pypi"]
     )
     assert "actions/attest-build-provenance@v2" in _used_actions(
         release["jobs"]["portable"]
     )
+
+
+def test_release_uploads_are_complete_before_the_draft_is_published() -> None:
+    job = _workflow("release.yml")["jobs"]["github-release"]
+    commands = next(step["run"] for step in job["steps"] if "run" in step)
+    assert commands.index("--draft --generate-notes") < commands.index("publish_gpu_assets.py")
+    assert commands.index("publish_gpu_assets.py") < commands.index("--draft=false")
+    assert 'test "$DRAFT" = true' in commands
 
 
 class _PyPIResponseHandler(BaseHTTPRequestHandler):
@@ -163,15 +169,12 @@ def test_pypi_preflight_rejects_a_tag_version_mismatch(tmp_path: Path) -> None:
 
 
 def test_gpu_wheel_smoke_uses_a_clean_dependency_resolving_environment() -> None:
-    workflow = (ROOT / ".github/workflows/gpu-validation.yml").read_text(
+    runner = (ROOT / ".github/scripts/gpu_release.py").read_text(
         encoding="utf-8"
     )
-
-    assert "python -m venv" in workflow
-    assert "turbo-dllm[gpu,test]" in workflow
-    assert "--no-deps" not in workflow
-    assert '"$GITHUB_WORKSPACE/tests/unit/attention"' in workflow
-    assert '"$GITHUB_WORKSPACE/tests/unit/kernels"' in workflow
+    assert "turbo-dllm[gpu,test]" in runner
+    assert 'SOURCE / "tests/unit/attention"' in runner
+    assert 'SOURCE / "tests/unit/kernels"' in runner
 
 
 def test_portable_wheel_smoke_does_not_duplicate_runtime_dependencies() -> None:
@@ -188,24 +191,24 @@ def test_ci_qualifies_the_documented_python_range() -> None:
 
 
 def test_gpu_qualification_does_not_shadow_installed_wheels() -> None:
-    steps = {
-        step.get("name"): step
-        for step in _workflow("gpu-validation.yml")["jobs"]["qualify"]["steps"]
-    }
-    for name in (
-        "GPU smoke",
-        "Attention and kernel correctness",
-        "Distributed correctness",
-        "Checkpoint resume",
-        "Performance instrumentation smoke",
-    ):
-        assert steps[name]["working-directory"] == "${{ runner.temp }}"
-        if name != "GPU smoke":
-            assert "-o pythonpath=" in steps[name]["run"]
-    assert (
-        '"$GITHUB_WORKSPACE/tests/distributed/test_gpu_performance_smoke.py"'
-        in (steps["Performance instrumentation smoke"]["run"])
+    runner = (ROOT / ".github/scripts/gpu_release.py").read_text()
+    assert '"pythonpath="' in runner
+    assert 'cwd="/tmp"' in runner
+    assert 'SOURCE / "tests/distributed/test_gpu_performance_smoke.py"' in runner
+
+
+def test_gpu_backfill_publishes_only_after_qualification_and_verification() -> None:
+    gpu = _workflow("gpu-validation.yml")
+    publish = gpu["jobs"]["publish-existing-release"]
+    assert publish["needs"] == "qualify"
+    assert "workflow_dispatch" in publish["if"]
+    assert publish["permissions"]["contents"] == "write"
+    release = _workflow("release.yml")
+    download = next(
+        step for step in release["jobs"]["github-release"]["steps"]
+        if step.get("uses") == "actions/download-artifact@v4"
     )
+    assert "pattern" not in download["with"]
 
 
 def test_cuda_wheel_snapshot_includes_package_metadata() -> None:
@@ -253,7 +256,7 @@ def test_cuda_wheel_snapshot_keeps_builder_but_not_generated_artifacts(
 def test_release_publishes_portable_artifacts() -> None:
     workflow = (ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
 
-    assert 'gh release create "$GITHUB_REF_NAME" release-assets/*' in workflow
+    assert '--directory release-assets --release "$GITHUB_REF_NAME"' in workflow
     assert "portable-dist" in workflow
     assert "portable-reports" in workflow
 

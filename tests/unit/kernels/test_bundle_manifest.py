@@ -2,8 +2,13 @@ from __future__ import annotations
 
 import hashlib
 import json
+import subprocess
+import sys
+import venv
+import zipfile
 from pathlib import Path
 from types import SimpleNamespace
+from urllib.error import HTTPError
 
 import pytest
 
@@ -165,14 +170,92 @@ def test_bundle_install_resolves_the_coordinated_gpu_runtime(
 
     bundle_manifest.install_bundle(tmp_path / "bundle.json")
 
-    assert len(commands) == 1
+    assert len(commands) == 2
     command = commands[0]
     assert "--no-deps" not in command
-    package_wheel = next(
-        path for path in wheels if path.name.startswith("turbo_dllm")
-    )
+    package_wheel = next(path for path in wheels if path.name.startswith("turbo_dllm"))
     assert f"turbo-dllm[gpu] @ {package_wheel.resolve().as_uri()}" in command
     assert all(str(path) in command for path in wheels if path != package_wheel)
+    assert "--force-reinstall" in commands[1]
+    assert "--no-deps" in commands[1]
+    assert all(str(path) in commands[1] for path in wheels)
+
+
+def test_bundle_install_replaces_same_version_portable_and_native_wheels(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    environment = tmp_path / "venv"
+    venv.create(environment, with_pip=True)
+    python = environment / (
+        "Scripts/python.exe" if sys.platform == "win32" else "bin/python"
+    )
+    distributions = ("turbo_dllm", "bdlm_flash_attn_3", "flash_attn_4")
+
+    def wheel(directory: Path, distribution: str, marker: str) -> Path:
+        directory.mkdir(exist_ok=True)
+        path = directory / f"{distribution}-0.1.0-py3-none-any.whl"
+        metadata = f"{distribution}-0.1.0.dist-info"
+        dependency = (
+            f"Requires-Dist: gpu-runtime-probe @ {runtime.as_uri()} ; extra == 'gpu'\n"
+            if distribution == "turbo_dllm"
+            else ""
+        )
+        with zipfile.ZipFile(path, "w") as archive:
+            archive.writestr(f"{distribution}_probe.py", f"MARKER = {marker!r}\n")
+            archive.writestr(
+                f"{metadata}/METADATA",
+                f"Metadata-Version: 2.1\nName: {distribution}\nVersion: 0.1.0\nProvides-Extra: gpu\n{dependency}",
+            )
+            archive.writestr(
+                f"{metadata}/WHEEL",
+                "Wheel-Version: 1.0\nGenerator: fixture\nRoot-Is-Purelib: true\nTag: py3-none-any\n",
+            )
+            archive.writestr(
+                f"{metadata}/RECORD",
+                f"{distribution}_probe.py,,\n{metadata}/METADATA,,\n{metadata}/WHEEL,,\n{metadata}/RECORD,,\n",
+            )
+        return path
+
+    runtime = wheel(tmp_path / "runtime", "gpu_runtime_probe", "runtime")
+    original = tuple(
+        wheel(tmp_path / "portable", name, "portable") for name in distributions
+    )
+    qualified = tuple(
+        wheel(tmp_path / "qualified", name, "qualified") for name in distributions
+    )
+    subprocess.run(
+        [str(python), "-m", "pip", "install", "--no-index", *map(str, original)],
+        check=True,
+    )
+    monkeypatch.setenv("PIP_NO_INDEX", "1")
+    monkeypatch.setattr(bundle_manifest, "sys", SimpleNamespace(executable=str(python)))
+    monkeypatch.setattr(bundle_manifest, "read_bundle_manifest", lambda _: {})
+    monkeypatch.setattr(
+        bundle_manifest, "download_bundle", lambda manifest, *, output_dir: qualified
+    )
+
+    bundle_manifest.install_bundle(tmp_path / "bundle.json")
+
+    for distribution in distributions:
+        marker = subprocess.check_output(
+            [
+                str(python),
+                "-c",
+                f"from {distribution}_probe import MARKER; print(MARKER)",
+            ],
+            text=True,
+        )
+        assert marker.strip() == "qualified"
+    runtime_marker = subprocess.check_output(
+        [
+            str(python),
+            "-c",
+            "from gpu_runtime_probe_probe import MARKER; print(MARKER)",
+        ],
+        text=True,
+    )
+    assert runtime_marker.strip() == "runtime"
 
 
 def test_catalog_records_hashes_and_selects_an_exact_host(tmp_path: Path) -> None:
@@ -359,3 +442,35 @@ def test_auto_resolution_rejects_catalog_manifest_metadata_disagreement(
             environment=_environment(),
             releases_url="https://example.invalid/releases/download",
         )
+
+
+@pytest.mark.parametrize("status", [404, 403, 500])
+def test_auto_resolution_explains_missing_catalog_without_hiding_other_http_errors(
+    monkeypatch: pytest.MonkeyPatch, status: int
+) -> None:
+    url = "https://example.invalid/releases/download/v0.1.0/gpu-bundles.json"
+
+    def unavailable(source: str, *, limit: int) -> bytes:
+        raise HTTPError(source, status, "unavailable", {}, None)
+
+    monkeypatch.setattr(bundle_manifest, "_read_url", unavailable)
+    if status != 404:
+        with pytest.raises(HTTPError) as error:
+            resolve_bundle_manifest(
+                "v0.1.0",
+                environment=_environment(),
+                releases_url="https://example.invalid/releases/download",
+            )
+        assert error.value.code == status
+    else:
+        with pytest.raises(RuntimeError) as error:
+            resolve_bundle_manifest(
+                "v0.1.0",
+                environment=_environment(),
+                releases_url="https://example.invalid/releases/download",
+            )
+        message = str(error.value)
+        assert "v0.1.0" in message
+        assert url in message
+        assert "portable" in message
+        assert "source" in message

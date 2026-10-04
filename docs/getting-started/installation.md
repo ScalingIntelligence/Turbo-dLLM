@@ -24,12 +24,18 @@ uses a supported Python version.
 Install the bundle matching your Python, CUDA version, and GPU:
 
 ```bash
-dllm bundle install --release v0.1.1 --auto
+dllm bundle install --release v0.1.2 --auto
 ```
 
 The command selects and verifies the correct native wheels. If no supported
 bundle matches your system, it reports the detected environment and available
 options.
+
+The qualified target is Python 3.12, Linux x86_64, CUDA 12.8 PyTorch, and
+an SM90 GPU (H100/H200). A 404 for `gpu-bundles.json` means the release
+catalog has not been published; the portable wheel alone cannot provide
+GPU training. See [GPU bundles](../operations/gpu-bundles.md) for available
+targets and [native development](../development/native.md) for source builds.
 
 Check a training configuration before launching it:
 
@@ -45,7 +51,7 @@ offline installation.
 Qwen3.8 training requires its additional runtime:
 
 ```bash
-python -m pip install "turbo-dllm[qwen3_8]==0.1.1"
+python -m pip install "turbo-dllm[qwen3_8]==0.1.2"
 ```
 
 DiffusionGemma expert parallelism requires DeepEP. Install the tested revision

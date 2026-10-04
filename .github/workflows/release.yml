@@ -64,7 +64,7 @@ jobs:
           if-no-files-found: error
 
   publish-pypi:
-    needs: portable
+    needs: [portable, gpu]
     runs-on: ubuntu-24.04
     environment:
       name: pypi
@@ -81,8 +81,21 @@ jobs:
         with:
           packages-dir: dist
 
+  gpu:
+    needs: portable
+    uses: ./.github/workflows/gpu-validation.yml
+    with:
+      release_tag: ${{ github.ref_name }}
+    secrets:
+      MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
+      MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+
   github-release:
-    needs: publish-pypi
+    needs: [publish-pypi, gpu]
     runs-on: ubuntu-24.04
     permissions:
       contents: write
@@ -90,10 +103,18 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
-          pattern: "portable-*"
           path: release-assets
           merge-multiple: true
       - name: Publish immutable release assets
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release create "$GITHUB_REF_NAME" release-assets/* --generate-notes --verify-tag
+        run: |
+          if DRAFT="$(gh release view "$GITHUB_REF_NAME" --json isDraft --jq '.isDraft' 2>/dev/null)"; then
+            test "$DRAFT" = true
+          else
+            gh release create "$GITHUB_REF_NAME" --draft --generate-notes --verify-tag
+          fi
+          python .github/scripts/publish_gpu_assets.py \
+            --directory release-assets --release "$GITHUB_REF_NAME" \
+            --repository "$GITHUB_REPOSITORY"
+          gh release edit "$GITHUB_REF_NAME" --draft=false --latest

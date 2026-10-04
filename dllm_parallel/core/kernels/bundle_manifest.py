@@ -12,6 +12,7 @@ import subprocess
 import sys
 import tempfile
 import urllib.request
+from urllib.error import HTTPError
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import Any, Mapping, Sequence
@@ -445,7 +446,19 @@ def resolve_bundle_manifest(
 
     host = detect_bundle_environment() if environment is None else environment
     catalog_url = catalog_url_for_release(release, releases_url=releases_url)
-    catalog = read_bundle_catalog(catalog_url)
+    try:
+        catalog = read_bundle_catalog(catalog_url)
+    except HTTPError as exc:
+        if exc.code != 404:
+            raise
+        raise RuntimeError(
+            f"GPU bundle catalog is unavailable for {release} (HTTP 404): "
+            f"{catalog_url}. A portable wheel alone does not include native GPU "
+            "kernels. Use a release with published GPU bundles, a qualified "
+            "--manifest, or build from source; see "
+            "https://github.com/ScalingIntelligence/Turbo-dLLM/blob/main/"
+            "docs/development/native.md"
+        ) from exc
     if str(catalog["release"]) != release:
         raise ValueError(
             f"bundle catalog release mismatch: requested={release!r}, "
@@ -544,6 +557,24 @@ def _install_parsed_bundle(parsed: Mapping[str, Any]) -> None:
         )
         if completed.returncode:
             raise RuntimeError(f"pip failed with exit code {completed.returncode}")
+        # pip otherwise skips a portable or different-build wheel with the
+        # same version. Replace only verified wheels, retaining resolved deps.
+        completed = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "pip",
+                "install",
+                "--force-reinstall",
+                "--no-deps",
+                *map(str, wheels),
+            ],
+            check=False,
+        )
+        if completed.returncode:
+            raise RuntimeError(
+                f"pip failed replacing bundle wheels with exit code {completed.returncode}"
+            )
 
 
 def install_bundle(manifest: str | Path) -> None:
