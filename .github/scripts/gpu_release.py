@@ -184,6 +184,12 @@ def build_runtime_wheels() -> None:
 
 def install_wheels() -> None:
     """Resolve every runtime dependency as a wheel in a new isolated venv."""
+    import os
+
+    # Modal injects SDK dependencies through PYTHONPATH; exclude them from
+    # every subprocess that qualifies the independently installed runtime.
+    os.environ.pop("PYTHONPATH", None)
+    os.environ["PYTHONNOUSERSITE"] = "1"
     python = "/opt/dllm/clean/bin/python"
     subprocess.run(
         [sys.executable, "-m", "venv", "--clear", "/opt/dllm/clean"], check=True
@@ -270,6 +276,12 @@ def qualify(release: str, revision: str, repository: str) -> list[str]:
         raise RuntimeError("qualification requires SM90 GPUs")
     reports = Path("/tmp/qualification")
     reports.mkdir()
+    import os
+
+    # Modal injects SDK dependencies through PYTHONPATH; exclude them from
+    # every subprocess that qualifies the independently installed runtime.
+    os.environ.pop("PYTHONPATH", None)
+    os.environ["PYTHONNOUSERSITE"] = "1"
     python = "/opt/dllm/clean/bin/python"
     base_url = f"https://github.com/{repository}/releases/download/{release}"
     subprocess.run(
