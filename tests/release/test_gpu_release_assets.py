@@ -21,6 +21,8 @@ def _prepare(tmp_path: Path, *, corrupt: bool = False, wrong_revision: bool = Fa
         "turbo_dllm-0.1.1-cp312-cp312-linux_x86_64.whl",
         "bdlm_flash_attn_3-0.1.0-cp312-cp312-linux_x86_64.whl",
         "flash_attn_4-4.0.0b19-py3-none-any.whl",
+        "deepspeed-0.19.2-py3-none-any.whl",
+        "transformer_engine_torch-2.13.0-cp312-cp312-linux_x86_64.whl",
     )
     for name in names:
         (tmp_path / name).write_bytes(b"wheel fixture")
@@ -62,7 +64,7 @@ def test_release_catalog_and_checksums_cover_the_verified_upload(tmp_path: Path)
     assert catalog["release"] == "v0.1.1"
     assert catalog["bundles"][0]["url"] == f"{BASE}/gpu-sm90-cu128-cp312.json"
     records = (tmp_path / "SHA256SUMS-gpu").read_text().splitlines()
-    assert len(records) == 5
+    assert len(records) == 7
     for record in records:
         digest, name = record.split("  ")
         assert digest == hashlib.sha256((tmp_path / name).read_bytes()).hexdigest()
@@ -100,4 +102,34 @@ def test_release_preparation_rejects_an_empty_bundle_directory(tmp_path: Path):
     )
     assert completed.returncode != 0
     assert "at least one qualified GPU bundle" in completed.stderr
+    assert not (tmp_path / "gpu-bundles.json").exists()
+
+
+@pytest.mark.parametrize("fault", ["missing", "corrupt"])
+def test_release_rejects_missing_or_corrupt_runtime_wheels(tmp_path: Path, fault: str):
+    assert _prepare(tmp_path).returncode == 0
+    (tmp_path / "gpu-bundles.json").unlink()
+    (tmp_path / "SHA256SUMS-gpu").unlink()
+    runtime = next(tmp_path.glob("transformer_engine_torch-*.whl"))
+    if fault == "missing":
+        runtime.unlink()
+    else:
+        runtime.write_bytes(b"corrupt")
+    completed = subprocess.run(
+        [
+            sys.executable,
+            str(ROOT / "scripts/verify/gpu_release_assets.py"),
+            "--directory",
+            str(tmp_path),
+            "--release",
+            "v0.1.1",
+            "--source-revision",
+            REVISION,
+            "--base-url",
+            BASE,
+        ],
+        capture_output=True,
+        text=True,
+    )
+    assert completed.returncode != 0
     assert not (tmp_path / "gpu-bundles.json").exists()

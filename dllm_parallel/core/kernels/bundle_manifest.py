@@ -31,6 +31,7 @@ REQUIRED_DISTRIBUTIONS = (
     "turbo_dllm",
     "flash_attn_4",
 )
+RUNTIME_DISTRIBUTIONS = ("deepspeed", "transformer_engine_torch")
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
 _GIT_REVISION = re.compile(r"^[0-9a-f]{40}$")
 _MAX_MANIFEST_BYTES = 1024 * 1024
@@ -61,11 +62,11 @@ def _architectures(value: str | Sequence[str]) -> tuple[str, ...]:
 
 
 def _distribution_for_wheel(name: str) -> str:
-    normalized = name.casefold().replace("-", "_")
+    normalized = name.split("-", 1)[0].casefold().replace(".", "_")
     matches = [
         distribution
-        for distribution in REQUIRED_DISTRIBUTIONS
-        if normalized.startswith(f"{distribution}_")
+        for distribution in (*REQUIRED_DISTRIBUTIONS, *RUNTIME_DISTRIBUTIONS)
+        if normalized == distribution
     ]
     if len(matches) != 1:
         raise ValueError(f"unrecognized coordinated wheel: {name}")
@@ -92,12 +93,15 @@ def create_bundle_manifest(
     package_version: str,
     source_revision: str,
 ) -> dict[str, Any]:
-    """Write a deterministic manifest for exactly three coordinated wheels."""
+    """Write a deterministic manifest for kernels and optional prebuilt runtime."""
 
     wheel_dir = Path(directory)
     wheels = sorted(wheel_dir.glob("*.whl"), key=lambda path: path.name)
     distributions = [_distribution_for_wheel(path.name) for path in wheels]
-    if sorted(distributions) != sorted(REQUIRED_DISTRIBUTIONS):
+    core = [name for name in distributions if name in REQUIRED_DISTRIBUTIONS]
+    if sorted(core) != sorted(REQUIRED_DISTRIBUTIONS) or len(set(distributions)) != len(
+        distributions
+    ):
         raise ValueError(
             "bundle directory must contain exactly one Turbo-dLLM, FA3, and FA4 wheel"
         )
@@ -123,8 +127,24 @@ def create_bundle_manifest(
                 "size": path.stat().st_size,
             }
             for path in wheels
+            if _distribution_for_wheel(path.name) in REQUIRED_DISTRIBUTIONS
         ],
     }
+    runtime_wheels = [
+        path
+        for path in wheels
+        if _distribution_for_wheel(path.name) in RUNTIME_DISTRIBUTIONS
+    ]
+    if runtime_wheels:
+        manifest["runtime_artifacts"] = [
+            {
+                "name": path.name,
+                "url": f"{base_url.rstrip('/')}/{path.name}",
+                "sha256": _sha256(path),
+                "size": path.stat().st_size,
+            }
+            for path in runtime_wheels
+        ]
     destination = Path(output)
     destination.parent.mkdir(parents=True, exist_ok=True)
     destination.write_text(
@@ -274,9 +294,13 @@ def _validate_bundle_manifest_schema(
     if not isinstance(artifacts, list) or len(artifacts) != 3:
         raise ValueError("bundle must describe exactly three wheel artifacts")
 
+    runtime = manifest.get("runtime_artifacts", [])
+    if not isinstance(runtime, list) or len(runtime) > len(RUNTIME_DISTRIBUTIONS):
+        raise ValueError("invalid prebuilt runtime artifact list")
+    all_artifacts = [*artifacts, *runtime]
     distributions: list[str] = []
     names: set[str] = set()
-    for artifact in artifacts:
+    for artifact in all_artifacts:
         if not isinstance(artifact, Mapping):
             raise ValueError("bundle artifact entries must be objects")
         name = str(artifact.get("name", ""))
@@ -295,9 +319,14 @@ def _validate_bundle_manifest_schema(
             raise ValueError(f"invalid SHA-256 for {name}")
         if not isinstance(artifact.get("size"), int) or int(artifact["size"]) <= 0:
             raise ValueError(f"invalid artifact size for {name}")
-    if sorted(distributions) != sorted(REQUIRED_DISTRIBUTIONS):
+    if sorted(distributions[:3]) != sorted(REQUIRED_DISTRIBUTIONS):
         raise ValueError("bundle artifact identities are incomplete")
-    return architectures, tuple(artifacts)
+    runtime_distributions = distributions[3:]
+    if any(name not in RUNTIME_DISTRIBUTIONS for name in runtime_distributions) or len(
+        set(runtime_distributions)
+    ) != len(runtime_distributions):
+        raise ValueError("bundle runtime artifact identities are invalid")
+    return architectures, tuple(all_artifacts)
 
 
 def _read_url(url: str, *, limit: int) -> bytes:
@@ -541,7 +570,7 @@ def _install_parsed_bundle(parsed: Mapping[str, Any]) -> None:
         package_wheel = wheels_by_distribution["turbo_dllm"]
         native_wheels = [
             wheels_by_distribution[distribution]
-            for distribution in REQUIRED_DISTRIBUTIONS
+            for distribution in wheels_by_distribution
             if distribution != "turbo_dllm"
         ]
         completed = subprocess.run(
@@ -550,6 +579,7 @@ def _install_parsed_bundle(parsed: Mapping[str, Any]) -> None:
                 "-m",
                 "pip",
                 "install",
+                "--only-binary=:all:",
                 f"turbo-dllm[gpu] @ {package_wheel.as_uri()}",
                 *map(str, native_wheels),
             ],

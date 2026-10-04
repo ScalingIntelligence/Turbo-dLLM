@@ -7,7 +7,8 @@ Usage:
   scripts/build/build_cuda_wheels.sh \
     --cuda-arch-list ARCHES \
     [--python PATH] \
-    [--output-dir PATH]
+    [--output-dir PATH] \
+    [--attention-wheels-dir PATH]
 
 Builds the three production wheel artifacts from the current checkout:
   - bdlm-flash-attn-3 from the vendored Hopper sources;
@@ -27,9 +28,15 @@ ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 PYTHON="${PYTHON:-python}"
 OUTPUT_DIR="$ROOT/dist"
 CUDA_ARCH_LIST=""
+ATTENTION_WHEELS_DIR=""
 
 while (($#)); do
   case "$1" in
+    --attention-wheels-dir)
+      [[ $# -ge 2 ]] || exit 2
+      ATTENTION_WHEELS_DIR="$2"
+      shift 2
+      ;;
     --cuda-arch-list)
       [[ $# -ge 2 ]] || { echo "--cuda-arch-list requires a value" >&2; exit 2; }
       CUDA_ARCH_LIST="$2"
@@ -158,6 +165,10 @@ tar \
   # `build/` directory from shadowing the PyPA build frontend.
   cd "$STAGING_DIR"
 
+  if [[ -n "$ATTENTION_WHEELS_DIR" ]]; then
+    cp "$ATTENTION_WHEELS_DIR"/bdlm_flash_attn_3-*.whl "$WHEEL_DIR"/
+    cp "$ATTENTION_WHEELS_DIR"/flash_attn_4-*.whl "$WHEEL_DIR"/
+  else
   # The production FA3 variant is part of the artifact contract. Set every
   # feature flag explicitly so shell state cannot silently change the wheel.
   env \
@@ -205,6 +216,7 @@ tar \
       --skip-dependency-check \
       --outdir "$WHEEL_DIR" \
       "$BUILD_ROOT/third_party/flash-attention/flash_attn/cute"
+  fi
 
   "$PYTHON" -m build \
     --wheel \

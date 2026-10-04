@@ -474,3 +474,61 @@ def test_auto_resolution_explains_missing_catalog_without_hiding_other_http_erro
         assert url in message
         assert "portable" in message
         assert "source" in message
+
+
+def test_manifest_includes_verified_prebuilt_runtime_wheels(tmp_path: Path) -> None:
+    runtime = (
+        "deepspeed-0.19.2-py3-none-any.whl",
+        "transformer_engine_torch-2.13.0-cp312-cp312-linux_x86_64.whl",
+    )
+    for name in (*WHEELS, *runtime):
+        (tmp_path / name).write_bytes(name.encode())
+    manifest = create_bundle_manifest(
+        directory=tmp_path,
+        output=tmp_path / "manifest.json",
+        base_url="https://example.invalid/v0.1.0",
+        cuda="12.8",
+        architectures="9.0",
+        python_abi="cp312",
+        platform="linux_x86_64",
+        package_version="0.1.0",
+        source_revision="a" * 40,
+    )
+    assert len(manifest["artifacts"]) == 3
+    assert {a["name"] for a in manifest["runtime_artifacts"]} == set(runtime)
+    assert len(validate_bundle_manifest(manifest, environment=_environment())) == 5
+    manifest["runtime_artifacts"][0]["sha256"] = "invalid"
+    with pytest.raises(ValueError, match="SHA-256"):
+        validate_bundle_manifest(manifest, environment=_environment())
+
+
+def test_installer_uses_binary_only_dependencies_and_installs_all_runtime_wheels(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    wheels = tuple(
+        tmp_path / name
+        for name in (
+            *WHEELS,
+            "deepspeed-0.19.2-py3-none-any.whl",
+            "transformer_engine_torch-2.13.0-cp312-cp312-linux_x86_64.whl",
+        )
+    )
+    commands = []
+    monkeypatch.setattr(
+        bundle_manifest, "download_bundle", lambda manifest, *, output_dir: wheels
+    )
+    monkeypatch.setattr(
+        bundle_manifest.subprocess,
+        "run",
+        lambda command, **kwargs: (
+            commands.append(command) or SimpleNamespace(returncode=0)
+        ),
+    )
+    bundle_manifest._install_parsed_bundle({})
+    assert "--only-binary=:all:" in commands[0]
+    for command in commands:
+        assert all(
+            str(wheel) in command
+            for wheel in wheels
+            if not wheel.name.startswith("turbo_dllm")
+        )

@@ -22,7 +22,7 @@ on:
       release_tag:
         description: Existing release to supply with qualified GPU assets
         required: true
-        default: v0.1.1
+        default: v0.1.4
         type: string
 
       publish_existing_release:
@@ -66,8 +66,10 @@ jobs:
           MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
           MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
           RELEASE_TAG: ${{ inputs.release_tag }}
+          ATTENTION_IMAGE: ${{ vars.GPU_ATTENTION_IMAGE }}
         run: |
           python .github/scripts/gpu_release.py \
+            --attention-image "$ATTENTION_IMAGE" \
             --release "$RELEASE_TAG" \
             --revision "$SOURCE_REVISION" \
             --repository "$GITHUB_REPOSITORY" \
