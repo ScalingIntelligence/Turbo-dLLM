@@ -1,10 +1,10 @@
 # Turbo-dLLM
 
 Turbo-dLLM is a highly optimized distributed training library for diffusion
-language models and diffusion-based speculative decoders. It includes the official implementation of context-sharded
-block parallelism for scaling training to large
-contexts, plus typed configuration, prepared-data runtimes, checkpointing, and
-optimized CUDA kernels.
+language models and diffusion-based speculative decoders. It includes the
+official implementation of context-sharded block parallelism for scaling
+training to large contexts, plus typed configuration, prepared-data runtimes,
+checkpointing, and optimized CUDA kernels.
 
 ## Install
 
