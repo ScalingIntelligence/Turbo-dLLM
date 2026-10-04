@@ -69,10 +69,9 @@ For speculative training and deployment, follow the
 
 ## Data and recipes
 
-The preparation frontend accepts Hugging Face datasets, JSONL, Parquet, text,
-and token IDs. It supports text, chat messages, prompt/completion records, and
-token-level supervision while keeping tokenization outside the GPU training
-loop.
+Prepare Hugging Face datasets, JSONL, Parquet, text, or token IDs with text,
+chat, prompt/completion, and token-level supervision. Tokenization runs
+outside the GPU training loop.
 
 ```bash
 python -m pip install 'turbo-dllm[data]'
@@ -81,7 +80,7 @@ dllm data inspect data/prepared
 dllm data stats data/prepared
 ```
 
-Packaged recipes provide small validation runs and focused examples:
+Explore packaged recipes:
 
 ```bash
 dllm recipe list
