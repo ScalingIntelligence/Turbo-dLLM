@@ -334,7 +334,9 @@ def _verify_dflash() -> str:
 
 
 def _verify_transformer_engine() -> str:
-    import transformer_engine.pytorch  # noqa: F401
+    from dllm_parallel.core.parallel.transformer_engine import load_transformer_engine
+
+    load_transformer_engine()
 
     try:
         version = metadata.version("transformer-engine")
