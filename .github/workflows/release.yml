@@ -4,6 +4,16 @@ on:
   push:
     tags:
       - "v*"
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Existing immutable tag to build and publish
+        required: true
+        default: v0.1.3
+        type: string
+
+env:
+  RELEASE_TAG: ${{ inputs.release_tag || github.ref_name }}
 
 permissions:
   contents: read
@@ -18,6 +28,8 @@ jobs:
       id-token: write
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.release_tag || github.ref }}
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -25,10 +37,10 @@ jobs:
       - name: Verify tag and package version
         run: |
           VERSION="$(python -c 'import tomllib; print(tomllib.load(open("pyproject.toml", "rb"))["project"]["version"])')"
-          test "${GITHUB_REF_NAME}" = "v${VERSION}"
+          test "${RELEASE_TAG}" = "v${VERSION}"
           test -z "$(git status --porcelain)"
       - name: Verify version is unpublished on PyPI
-        run: python scripts/verify/pypi_release.py --tag "$GITHUB_REF_NAME"
+        run: python scripts/verify/pypi_release.py --tag "$RELEASE_TAG"
       - run: uv pip install --system -e ".[test,dev]"
       - run: ruff check dllm_parallel tests
       - run: python -m pytest -q tests/unit tests/packaging tests/release
@@ -85,7 +97,8 @@ jobs:
     needs: portable
     uses: ./.github/workflows/gpu-validation.yml
     with:
-      release_tag: ${{ github.ref_name }}
+      release_tag: ${{ inputs.release_tag || github.ref_name }}
+      publish_existing_release: false
     secrets:
       MODAL_TOKEN_ID: ${{ secrets.MODAL_TOKEN_ID }}
       MODAL_TOKEN_SECRET: ${{ secrets.MODAL_TOKEN_SECRET }}
@@ -109,12 +122,12 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          if DRAFT="$(gh release view "$GITHUB_REF_NAME" --json isDraft --jq '.isDraft' 2>/dev/null)"; then
+          if DRAFT="$(gh release view "$RELEASE_TAG" --json isDraft --jq '.isDraft' 2>/dev/null)"; then
             test "$DRAFT" = true
           else
-            gh release create "$GITHUB_REF_NAME" --draft --generate-notes --verify-tag
+            gh release create "$RELEASE_TAG" --draft --generate-notes --verify-tag
           fi
           python .github/scripts/publish_gpu_assets.py \
-            --directory release-assets --release "$GITHUB_REF_NAME" \
+            --directory release-assets --release "$RELEASE_TAG" \
             --repository "$GITHUB_REPOSITORY"
-          gh release edit "$GITHUB_REF_NAME" --draft=false --latest
+          gh release edit "$RELEASE_TAG" --draft=false --latest
