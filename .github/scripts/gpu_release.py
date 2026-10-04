@@ -51,9 +51,29 @@ def validate_cached_attention(wheels: list[Path], revision: str) -> None:
     import zipfile
     import torch
 
-    if f"+bdlm.{revision[:12]}-" not in wheels[1].name:
+    fa4 = next(
+        (wheel for wheel in wheels if wheel.name.startswith("flash_attn_4-")), None
+    )
+    if fa4 is not None and f"+bdlm.{revision[:12]}-" not in fa4.name:
         raise RuntimeError("cached FA4 source revision mismatch")
-    with zipfile.ZipFile(wheels[0]) as archive:
+    fa3 = next(
+        (wheel for wheel in wheels if wheel.name.startswith("bdlm_flash_attn_3-")), None
+    )
+    if fa3 is None:
+        return
+    try:
+        import tomllib
+    except ModuleNotFoundError:
+        import tomli as tomllib
+    from packaging.requirements import Requirement
+
+    pins = {
+        Requirement(item).name: str(Requirement(item).specifier)
+        for item in tomllib.loads((SOURCE / "pyproject.toml").read_text())["project"][
+            "optional-dependencies"
+        ]["gpu"]
+    }
+    with zipfile.ZipFile(fa3) as archive:
         metadata = json.loads(archive.read("flash_attn_3/build_metadata.json"))
         if metadata["source"]["revision"] != revision:
             raise RuntimeError("cached FA3 source revision mismatch")
@@ -70,6 +90,23 @@ def validate_cached_attention(wheels: list[Path], revision: str) -> None:
         binary = metadata["binary"]
         if hashlib.sha256(archive.read(binary["path"])).hexdigest() != binary["sha256"]:
             raise RuntimeError("cached attention binary checksum mismatch")
+        manifests = [
+            name
+            for name in archive.namelist()
+            if name.startswith("flash_attn_3/bdlm_splitd/_artifacts/")
+            and name.endswith("/manifest.json")
+        ]
+        if len(manifests) != 1:
+            raise RuntimeError("cached Split-D manifest mismatch")
+        splitd = json.loads(archive.read(manifests[0]))
+        if (
+            splitd.get("complete") is not True
+            or "==" + splitd.get("tvm_ffi", "") != pins["apache-tvm-ffi"]
+            or "==" + splitd.get("cutlass", "") != pins["nvidia-cutlass-dsl"]
+            or splitd.get("torch") != str(torch.__version__)
+            or splitd.get("torch_cuda") != str(torch.version.cuda)
+        ):
+            raise RuntimeError("cached Split-D ABI or completeness mismatch")
 
 
 def prepare_source(release: str, revision: str, repository: str) -> None:
@@ -99,9 +136,26 @@ def prepare_source(release: str, revision: str, repository: str) -> None:
         raise RuntimeError("release tag revision mismatch")
     git("checkout", "--detach", revision)
     current_trees = {path: git("rev-parse", f"HEAD:{path}") for path in paths}
-    if old_trees != current_trees or old_profile != profile(
+    profile_matches = old_profile == profile(
         (SOURCE / "scripts/build/build_cuda_wheels.sh").read_text()
-    ):
+    )
+    shared_matches = old_trees[paths[2]] == current_trees[paths[2]]
+    reuse_fa3 = (
+        shared_matches
+        and profile_matches
+        and old_trees[paths[0]] == current_trees[paths[0]]
+    )
+    reuse_fa4 = shared_matches and old_trees[paths[1]] == current_trees[paths[1]]
+    wheels = [
+        wheel
+        for pattern, reusable in (
+            ("bdlm_flash_attn_3-*.whl", reuse_fa3),
+            ("flash_attn_4-*.whl", reuse_fa4),
+        )
+        if reusable
+        for wheel in DIST.glob(pattern)
+    ]
+    if not wheels:
         print("Attention inputs changed; rebuilding all wheels")
         shutil.rmtree(DIST)
         return
@@ -110,10 +164,6 @@ def prepare_source(release: str, revision: str, repository: str) -> None:
 
     cache = ATTENTION
     cache.mkdir()
-    wheels = [
-        next(DIST.glob(pattern))
-        for pattern in ("bdlm_flash_attn_3-*.whl", "flash_attn_4-*.whl")
-    ]
     validate_cached_attention(wheels, old_revision)
     records = []
     for wheel in wheels:
@@ -190,6 +240,7 @@ def install_wheels() -> None:
     # every subprocess that qualifies the independently installed runtime.
     os.environ.pop("PYTHONPATH", None)
     os.environ["PYTHONNOUSERSITE"] = "1"
+    os.environ["TORCHINDUCTOR_COMPILE_THREADS"] = "1"
     python = "/opt/dllm/clean/bin/python"
     subprocess.run(
         [sys.executable, "-m", "venv", "--clear", "/opt/dllm/clean"], check=True
@@ -256,7 +307,7 @@ def install_wheels() -> None:
         [
             python,
             "-c",
-            "from dllm_parallel.core.parallel.transformer_engine import load_transformer_engine; load_transformer_engine()",
+            "from dllm_parallel.core.parallel.transformer_engine import load_transformer_engine; load_transformer_engine(); from flash_attn_3.bdlm_splitd import verify_splitd_artifacts; verify_splitd_artifacts()",
         ],
         check=True,
         cwd="/tmp",
@@ -292,6 +343,7 @@ def qualify(release: str, revision: str, repository: str) -> list[str]:
     # every subprocess that qualifies the independently installed runtime.
     os.environ.pop("PYTHONPATH", None)
     os.environ["PYTHONNOUSERSITE"] = "1"
+    os.environ["TORCHINDUCTOR_COMPILE_THREADS"] = "1"
     python = "/opt/dllm/clean/bin/python"
     base_url = f"https://github.com/{repository}/releases/download/{release}"
     subprocess.run(
@@ -367,6 +419,7 @@ def qualify(release: str, revision: str, repository: str) -> list[str]:
                 "-m",
                 "pytest",
                 "-q",
+                "--maxfail=1",
                 "-o",
                 "pythonpath=",
                 f"--junitxml={reports / (name + '.xml')}",

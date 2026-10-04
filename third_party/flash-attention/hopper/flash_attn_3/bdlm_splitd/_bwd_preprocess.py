@@ -142,10 +142,10 @@ class BDLMSplitDBwdPreprocess:
     stream: cuda.CUstream = None,
   ):
     # Get the data type and check if it is fp16 or bf16
-    if const_expr(not (mO.element_type == mdO.element_type)):
-      raise TypeError("All tensors must have the same data type")
-    if const_expr(mO.element_type not in [cutlass.Float16, cutlass.BFloat16]):
-      raise TypeError("Only Float16 or BFloat16 is supported")
+    if const_expr(mO.element_type != Float32):
+      raise TypeError("Forward output state must be Float32")
+    if const_expr(mdO.element_type not in [cutlass.Float16, cutlass.BFloat16]):
+      raise TypeError("Output gradients must be Float16 or BFloat16")
     if const_expr(mPdPsum.element_type not in [Float32]):
       raise TypeError("PdPsum tensor must be Float32")
     if const_expr(mdQaccum is not None):

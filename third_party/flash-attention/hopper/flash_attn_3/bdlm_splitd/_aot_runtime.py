@@ -83,7 +83,7 @@ def forward(
 ) -> tuple[torch.Tensor, torch.Tensor]:
   batch, query_len, query_heads, _ = query.shape
   key_len = int(key.shape[1])
-  output = torch.empty_like(query)
+  output = torch.empty_like(query, dtype=torch.float32)
   lse = torch.empty(
     (batch, query_heads, query_len),
     dtype=torch.float32,
@@ -142,7 +142,7 @@ def prepare_backward(
     output,
     name="output",
     shape=output_shape,
-    dtype=query.dtype,
+    dtype=torch.float32,
     device=query.device,
   )
   _validate_tensor(
@@ -319,7 +319,7 @@ def backward(
     output,
     name="output",
     shape=output_shape,
-    dtype=query.dtype,
+    dtype=torch.float32,
     device=query.device,
   )
   _validate_tensor(

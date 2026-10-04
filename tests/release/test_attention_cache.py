@@ -24,7 +24,7 @@ def _runner():
     return module
 
 
-@pytest.mark.parametrize("changed", ["vendor", "profile"])
+@pytest.mark.parametrize("changed", ["vendor", "profile", "cute"])
 def test_changed_inputs_clear_stale_attention_before_rebuild(
     tmp_path, monkeypatch, changed
 ):
@@ -59,9 +59,12 @@ def test_changed_inputs_clear_stale_attention_before_rebuild(
     git("add", ".")
     git("commit", "-qm", "old")
     old = git("rev-parse", "HEAD")
-    (source / paths[0] / "input.txt" if changed == "vendor" else script).write_text(
-        "FLASH_ATTENTION_DISABLE_SPLIT=FALSE"
+    changed_path = (
+        source / paths[0 if changed == "vendor" else 1] / "input.txt"
+        if changed != "profile"
+        else script
     )
+    changed_path.write_text("FLASH_ATTENTION_DISABLE_SPLIT=FALSE")
     git("add", ".")
     git("commit", "-qm", "new")
     new = git("rev-parse", "HEAD")
@@ -71,15 +74,57 @@ def test_changed_inputs_clear_stale_attention_before_rebuild(
     monkeypatch.setattr(runner, "SOURCE", source)
     monkeypatch.setattr(runner, "DIST", dist)
     monkeypatch.setattr(runner, "ATTENTION", attention)
+    if changed == "cute":
+        (dist / "bdlm_flash_attn_3-fixture.whl").write_bytes(b"verified cache fixture")
+        monkeypatch.setattr(
+            runner, "validate_cached_attention", lambda wheels, revision: None
+        )
+    else:
+        fa4_name = f"flash_attn_4-4.0.0b19+bdlm.{old[:12]}-py3-none-any.whl"
+        (dist / fa4_name).write_bytes(b"verified FA4 cache fixture")
+    monkeypatch.setenv("DLLM_ATTENTION_IMAGE", "im-cache")
+    original_output = subprocess.check_output
+    monkeypatch.setattr(
+        runner.subprocess,
+        "check_output",
+        lambda command, **kw: (
+            "fixture CUDA compiler"
+            if command[0] == "nvcc"
+            else original_output(command, **kw)
+        ),
+    )
     runner.prepare_source("v0.1.4", new, "owner/repo")
-    assert not attention.exists()
+    if changed == "cute":
+        assert (
+            attention / "bdlm_flash_attn_3-fixture.whl"
+        ).read_bytes() == b"verified cache fixture"
+        assert not list(attention.glob("flash_attn_4-*.whl"))
+    else:
+        assert (attention / fa4_name).read_bytes() == b"verified FA4 cache fixture"
+        assert not list(attention.glob("bdlm_flash_attn_3-*.whl"))
+    assert not (attention / "stale.whl").exists()
+    provenance = json.loads((attention / "attention-provenance.json").read_text())
+    assert provenance["components"][0]["source_revision"] == old
     assert not dist.exists()
     assert git("rev-parse", "HEAD") == new
 
 
-@pytest.mark.parametrize("fault", [None, "fa3_revision", "fa4_revision", "checksum"])
-def test_cached_wheels_preserve_their_actual_revision(tmp_path, fault):
+@pytest.mark.parametrize(
+    "fault",
+    [
+        None,
+        "fa3_revision",
+        "fa4_revision",
+        "checksum",
+        "tvm_abi",
+        "cutlass_abi",
+        "incomplete",
+        "missing_manifest",
+    ],
+)
+def test_cached_wheels_preserve_their_actual_revision(tmp_path, monkeypatch, fault):
     runner = _runner()
+    monkeypatch.setattr(runner, "SOURCE", ROOT)
     revision = "a" * 40
     binary = b"native fixture"
     metadata = {
@@ -102,6 +147,19 @@ def test_cached_wheels_preserve_their_actual_revision(tmp_path, fault):
     with zipfile.ZipFile(fa3, "w") as archive:
         archive.writestr("flash_attn_3/build_metadata.json", json.dumps(metadata))
         archive.writestr("flash_attn_3/_C.so", binary)
+        if fault != "missing_manifest":
+            archive.writestr(
+                "flash_attn_3/bdlm_splitd/_artifacts/fingerprint/manifest.json",
+                json.dumps(
+                    {
+                        "tvm_ffi": "0.1.14.post1" if fault == "tvm_abi" else "0.1.12",
+                        "cutlass": "4.6.0" if fault == "cutlass_abi" else "4.5.2",
+                        "torch": str(torch.__version__),
+                        "torch_cuda": str(torch.version.cuda),
+                        "complete": fault != "incomplete",
+                    }
+                ),
+            )
     suffix = "b" * 12 if fault == "fa4_revision" else revision[:12]
     fa4 = tmp_path / f"flash_attn_4-4.0.0b19+bdlm.{suffix}-py3-none-any.whl"
     if fault:

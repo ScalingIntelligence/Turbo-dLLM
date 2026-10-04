@@ -21,7 +21,7 @@ uses a supported Python version.
 
 ## Install GPU support
 
-For the qualified SM90 bundle, use Linux x86_64 and Python 3.12. Set up
+For the qualified SM90 bundle, use Ubuntu 24.04 x86_64 and Python 3.12. Set up
 a fresh environment with the matching PyTorch CUDA runtime:
 
 ```bash
@@ -29,12 +29,12 @@ python3.12 -m venv .venv-gpu
 source .venv-gpu/bin/activate
 python -m pip install --upgrade pip
 python -m pip install torch==2.10.0 --index-url https://download.pytorch.org/whl/cu128
-python -m pip install "turbo-dllm==0.1.5"
-dllm bundle install --release v0.1.5 --auto
+python -m pip install "turbo-dllm==0.1.6"
+dllm bundle install --release v0.1.6 --auto
 dllm doctor --training
 ```
 
-For an existing Python 3.12 environment, upgrade Turbo-dLLM to v0.1.5 and
+For an existing Python 3.12 environment, upgrade Turbo-dLLM to v0.1.6 and
 install the same PyTorch CUDA 12.8 runtime before selecting the bundle.
 Bundle selection uses `torch.version.cuda`, not the driver version printed
 by `nvidia-smi`.
@@ -43,7 +43,7 @@ The command selects and verifies the correct native wheels. If no supported
 bundle matches your system, it reports the detected environment and available
 options.
 
-The qualified target is Python 3.12, Linux x86_64, CUDA 12.8 PyTorch, and
+The qualified target is Python 3.12, Ubuntu 24.04 x86_64, CUDA 12.8 PyTorch, and
 an SM90 GPU (H100/H200). A 404 for `gpu-bundles.json` means the release
 catalog has not been published; the portable wheel alone cannot provide
 GPU training. See [GPU bundles](../operations/gpu-bundles.md) for available
@@ -63,7 +63,7 @@ offline installation.
 Qwen3.8 training requires its additional runtime:
 
 ```bash
-python -m pip install "turbo-dllm[qwen3_8]==0.1.5"
+python -m pip install "turbo-dllm[qwen3_8]==0.1.6"
 ```
 
 DiffusionGemma expert parallelism requires DeepEP. Install the tested revision

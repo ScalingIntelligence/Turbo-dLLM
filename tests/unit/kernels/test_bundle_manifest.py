@@ -186,7 +186,7 @@ def test_bundle_install_replaces_same_version_portable_and_native_wheels(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     environment = tmp_path / "venv"
-    venv.create(environment, with_pip=True)
+    venv.create(environment, with_pip=True, symlinks=sys.platform != "win32")
     python = environment / (
         "Scripts/python.exe" if sys.platform == "win32" else "bin/python"
     )

@@ -2,6 +2,20 @@
 
 ## Unreleased
 
+## [0.1.6] - 2026-10-04
+
+- Publish a qualified SM90 / CUDA 12.8 / CPython 3.12 GPU bundle, including
+  binary Transformer Engine and DeepSpeed runtime dependencies.
+- Replace an installed portable wheel during same-version GPU installation.
+- Load packaged cuDNN automatically and verify Split-D build/runtime ABI pins.
+- Correct FA4 CUDA stream ordering and reverse sparse-mask backward metadata.
+- Preserve FP32 Split-D forward and merged state for scale-1 backward accuracy.
+- Gate publication on clean installation, training, GPU correctness, distributed
+  execution, checkpoint resume, and performance instrumentation.
+- Include verified checksums, source provenance, SBOMs, and build attestations.
+
+Versions 0.1.2–0.1.5 remain immutable, unpublished qualification attempts.
+
 ## [0.1.1] - 2026-09-19
 
 - Add a generic offline preparation frontend for Hugging Face, JSONL, Parquet,
@@ -22,5 +36,7 @@
 
 This project follows Semantic Versioning. Release dates use ISO 8601.
 
-[Unreleased]: https://github.com/ScalingIntelligence/Turbo-dLLM/compare/v0.1.1...HEAD
+[Unreleased]: https://github.com/ScalingIntelligence/Turbo-dLLM/compare/v0.1.6...HEAD
 [0.1.1]: https://github.com/ScalingIntelligence/Turbo-dLLM/releases/tag/v0.1.1
+
+[0.1.6]: https://github.com/ScalingIntelligence/Turbo-dLLM/releases/tag/v0.1.6

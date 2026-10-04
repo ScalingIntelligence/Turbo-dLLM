@@ -12260,7 +12260,7 @@ wheels = [
 
 [[package]]
 name = "turbo-dllm"
-version = "0.1.5"
+version = "0.1.6"
 source = { editable = "." }
 dependencies = [
     { name = "accelerate" },
@@ -12314,6 +12314,7 @@ gpu = [
     { name = "transformers", version = "5.13.0", source = { registry = "https://pypi.org/simple" } },
 ]
 kernel-build = [
+    { name = "apache-tvm-ffi", version = "0.1.12", source = { registry = "https://pypi.org/simple" } },
     { name = "build" },
     { name = "ninja" },
     { name = "nvidia-cutlass-dsl", version = "4.5.2", source = { registry = "https://pypi.org/simple" } },
@@ -12353,6 +12354,7 @@ requires-dist = [
     { name = "accelerate", specifier = ">=1.0,<2" },
     { name = "accelerate", marker = "extra == 'gpu'", specifier = "==1.14.0" },
     { name = "apache-tvm-ffi", marker = "extra == 'gpu'", specifier = "==0.1.12" },
+    { name = "apache-tvm-ffi", marker = "extra == 'kernel-build'", specifier = "==0.1.12" },
     { name = "build", marker = "extra == 'dev'", specifier = "==1.5.0" },
     { name = "build", marker = "extra == 'kernel-build'", specifier = "==1.5.0" },
     { name = "cuda-bindings", marker = "extra == 'gpu'", specifier = "==12.9.4" },

@@ -91,7 +91,7 @@ from dllm_parallel.core.attention.wide_head_attention import (
     wide_bdlm_metadata_forward_bhsd as _wide_metadata_forward_bhsd,
     wide_bdlm_interval_plan as _build_wide_interval_plan,
     wide_bdlm_metadata_plan as _build_wide_metadata_plan,
-    wide_full_attention_bshd as _wide_full_attention_bshd,
+    wide_full_forward_bshd as _wide_full_attention_bshd,
     wide_full_backward_bshd as _wide_full_backward_bshd,
 )
 from dllm_parallel.core.profiling.operator_trace import communication_scope
@@ -1577,7 +1577,9 @@ class _RingWithLocalKVAttentionBSHD(torch.autograd.Function):
             numerator=numerator,
             m=m,
             l=l,
-            output_dtype=query.dtype,
+            output_dtype=(
+                torch.float32 if _is_wide_head_dim(query.shape[-1]) else query.dtype
+            ),
         )
         ctx.runtime = runtime
         ctx.scale = float(scale)
@@ -1597,7 +1599,7 @@ class _RingWithLocalKVAttentionBSHD(torch.autograd.Function):
             output.detach(),
             final_lse.detach(),
         )
-        return output
+        return output.to(dtype=query.dtype)
 
     @staticmethod
     def backward(
@@ -1995,13 +1997,15 @@ class _PureContextShardedActiveAttentionImpl:
             numerator=numerator,
             m=m,
             l=l,
-            output_dtype=query.dtype,
+            output_dtype=(
+                torch.float32 if _is_wide_head_dim(query.shape[-1]) else query.dtype
+            ),
         )
         if persistent_active_shard:
             output = compact_output
         else:
             active_output = _all_gather_active_query_rows_bshd(
-                compact_output[:, :local_active_len],
+                compact_output[:, :local_active_len].to(dtype=query.dtype),
                 active_len=active_len,
                 block_size=block_size,
                 rank=rank,
@@ -2010,7 +2014,8 @@ class _PureContextShardedActiveAttentionImpl:
                 phase="forward",
             )
             output = torch.cat(
-                (active_output, compact_output[:, local_active_len:]), dim=1
+                (active_output, compact_output[:, local_active_len:].to(dtype=query.dtype)),
+                dim=1,
             )
 
         ctx.runtime = runtime
@@ -2040,7 +2045,7 @@ class _PureContextShardedActiveAttentionImpl:
             final_lse.detach(),
             active_indices,
         )
-        return output
+        return output.to(dtype=query.dtype)
 
     @staticmethod
     def backward(
@@ -2432,7 +2437,9 @@ class _CollectiveWithLocalKVAttentionBSHD(torch.autograd.Function):
             numerator=numerator,
             m=m,
             l=l,
-            output_dtype=query.dtype,
+            output_dtype=(
+                torch.float32 if _is_wide_head_dim(query.shape[-1]) else query.dtype
+            ),
         )
         ctx.runtime = runtime
         ctx.scale = float(scale)
@@ -2454,7 +2461,7 @@ class _CollectiveWithLocalKVAttentionBSHD(torch.autograd.Function):
             output.detach(),
             final_lse.detach(),
         )
-        return output
+        return output.to(dtype=query.dtype)
 
     @staticmethod
     def backward(
@@ -3007,7 +3014,7 @@ class _RingContextParallelAttention(torch.autograd.Function):
             query.detach(),
             local_key.detach(),
             local_value.detach(),
-            output.detach().to(dtype=query.dtype),
+            output.detach(),
             m.detach(),
             l.detach(),
         )
@@ -3240,7 +3247,9 @@ class _RingContextParallelAttentionBSHD(torch.autograd.Function):
             numerator=numerator,
             m=m,
             l=l,
-            output_dtype=query.dtype,
+            output_dtype=(
+                torch.float32 if _is_wide_head_dim(query.shape[-1]) else query.dtype
+            ),
         )
         ctx.runtime = runtime
         ctx.scale = float(scale)
@@ -3257,7 +3266,7 @@ class _RingContextParallelAttentionBSHD(torch.autograd.Function):
             output.detach(),
             final_lse.detach(),
         )
-        return output
+        return output.to(dtype=query.dtype)
 
     @staticmethod
     def backward(
@@ -3475,7 +3484,7 @@ class _RingWithLocalKVAttention(torch.autograd.Function):
             local_value.detach(),
             local_global_key.detach(),
             local_global_value.detach(),
-            output.detach().to(dtype=query.dtype),
+            output.detach(),
             m.detach(),
             l.detach(),
         )
@@ -3673,7 +3682,9 @@ class _ReplicatedWithLocalKVAttentionBSHD(torch.autograd.Function):
             numerator=numerator,
             m=m,
             l=l,
-            output_dtype=query.dtype,
+            output_dtype=(
+                torch.float32 if _is_wide_head_dim(query.shape[-1]) else query.dtype
+            ),
         )
         ctx.scale = float(scale)
         ctx.has_local_mask = local_attn_mask is not None
@@ -3688,7 +3699,7 @@ class _ReplicatedWithLocalKVAttentionBSHD(torch.autograd.Function):
             output.detach(),
             final_lse.detach(),
         )
-        return output
+        return output.to(dtype=query.dtype)
 
     @staticmethod
     def backward(
@@ -8002,6 +8013,18 @@ def _normalize_flex_block_mask_storage(block_mask: Any) -> Any:
 
     if BlockMask is None:
         raise RuntimeError("Torch FlexAttention BlockMask is unavailable")
+    # Torch 2.10's compiled builder can leave reverse counts uninitialized
+    # on small block grids. Reconstruct them eagerly from the authoritative
+    # forward lists before caching metadata used by dK/dV kernels.
+    block_mask = BlockMask.from_kv_blocks(
+        kv_num_blocks=block_mask.kv_num_blocks,
+        kv_indices=block_mask.kv_indices,
+        full_kv_num_blocks=block_mask.full_kv_num_blocks,
+        full_kv_indices=block_mask.full_kv_indices,
+        BLOCK_SIZE=block_mask.BLOCK_SIZE,
+        mask_mod=block_mask.mask_mod,
+        seq_lengths=block_mask.seq_lengths,
+    )
     q_block_size, kv_block_size = block_mask.BLOCK_SIZE
     q_blocks = math.ceil(int(block_mask.seq_lengths[0]) / int(q_block_size))
     kv_blocks = math.ceil(int(block_mask.seq_lengths[1]) / int(kv_block_size))
@@ -8179,7 +8202,7 @@ def _merged_shard_grads(
         shard_grad_output = torch.empty(
             grad_output.shape,
             device=grad_output.device,
-            dtype=grad_output.dtype,
+            dtype=shard_output.dtype,
         )
         grad_lse = torch.empty(
             shard_lse.shape,
@@ -8189,13 +8212,13 @@ def _merged_shard_grads(
         cp_fusion.merge_backward_(
             shard_output,
             shard_lse.contiguous(),
-            final_output,
+            final_output.to(dtype=shard_output.dtype),
             final_lse.contiguous(),
-            grad_output,
+            grad_output.to(dtype=shard_output.dtype),
             shard_grad_output,
             grad_lse,
         )
-        return shard_grad_output, grad_lse
+        return shard_grad_output.to(dtype=grad_output.dtype), grad_lse
 
     finite = torch.isfinite(shard_lse) & torch.isfinite(final_lse)
     weight = torch.where(
@@ -9059,7 +9082,6 @@ def _ring_hybrid_backward_flex(
                     debug_nonfinite_attention=bool(
                         local_attn_mask.debug_nonfinite_attention
                     ),
-                    flex_cache=local_attn_mask.flex_cache,
                 )
             )
         elif active_block_indices.numel() == 0:

@@ -165,9 +165,8 @@ tar \
   # `build/` directory from shadowing the PyPA build frontend.
   cd "$STAGING_DIR"
 
-  if [[ -n "$ATTENTION_WHEELS_DIR" ]]; then
+  if [[ -n "$ATTENTION_WHEELS_DIR" ]] && compgen -G "$ATTENTION_WHEELS_DIR/bdlm_flash_attn_3-*.whl" > /dev/null; then
     cp "$ATTENTION_WHEELS_DIR"/bdlm_flash_attn_3-*.whl "$WHEEL_DIR"/
-    cp "$ATTENTION_WHEELS_DIR"/flash_attn_4-*.whl "$WHEEL_DIR"/
   else
   # The production FA3 variant is part of the artifact contract. Set every
   # feature flag explicitly so shell state cannot silently change the wheel.
@@ -206,6 +205,11 @@ tar \
       --outdir "$WHEEL_DIR" \
       "$BUILD_ROOT/third_party/flash-attention/hopper"
 
+  fi
+
+  if [[ -n "$ATTENTION_WHEELS_DIR" ]] && compgen -G "$ATTENTION_WHEELS_DIR/flash_attn_4-*.whl" > /dev/null; then
+    cp "$ATTENTION_WHEELS_DIR"/flash_attn_4-*.whl "$WHEEL_DIR"/
+  else
   # FA4's CuTe kernels are compiled for the concrete shapes at runtime, but the
   # Python kernel sources themselves are a versioned production artifact. Build
   # them from the same immutable source snapshot as the trainer.

@@ -12,6 +12,16 @@ from typing import Any, Callable
 import torch
 
 
+def _torch_stream(query: torch.Tensor):
+    import tvm_ffi
+
+    # Native kernels and their temporary tensors must share Torch's stream
+    # for consumer ordering and safe asynchronous allocator reuse.
+    return tvm_ffi.use_torch_stream(
+        torch.cuda.stream(torch.cuda.current_stream(device=query.device))
+    )
+
+
 def fa4_forward_sparse_tile(
     *,
     head_dim: int,
@@ -200,18 +210,19 @@ def fa4_forward(
     if not query.is_cuda:
         raise RuntimeError("FA4 forward requires CUDA tensors")
 
-    result = _flash_attn_fwd(
-        q=query.transpose(1, 2),
-        k=key.transpose(1, 2),
-        v=value.transpose(1, 2),
-        softmax_scale=float(scale),
-        causal=False,
-        pack_gqa=bool(query.shape[1] != key.shape[1]),
-        mask_mod=_bdlm_mask_mod(),
-        aux_tensors=[tensor.contiguous() for tensor in mask_buffers],
-        block_sparse_tensors=_forward_block_sparsity(block_mask),
-        return_lse=True,
-    )
+    with _torch_stream(query):
+        result = _flash_attn_fwd(
+            q=query.transpose(1, 2),
+            k=key.transpose(1, 2),
+            v=value.transpose(1, 2),
+            softmax_scale=float(scale),
+            causal=False,
+            pack_gqa=bool(query.shape[1] != key.shape[1]),
+            mask_mod=_bdlm_mask_mod(),
+            aux_tensors=[tensor.contiguous() for tensor in mask_buffers],
+            block_sparse_tensors=_forward_block_sparsity(block_mask),
+            return_lse=True,
+        )
     output, lse = result[:2]
     return output.transpose(1, 2), lse
 
@@ -258,25 +269,26 @@ def fa4_backward_from_state(
     v = value.transpose(1, 2)
     out = output.transpose(1, 2)
     dout = grad_output.transpose(1, 2)
-    dq, dk, dv = _flash_attn_bwd(
-        q=q,
-        k=k,
-        v=v,
-        out=out,
-        dout=dout,
-        lse=lse,
-        softmax_scale=float(scale),
-        causal=False,
-        deterministic=False,
-        pack_gqa=bool(pack_gqa),
-        mask_mod=_bdlm_mask_mod(),
-        aux_tensors=[tensor.contiguous() for tensor in mask_buffers],
-        block_sparse_tensors=_backward_block_sparsity(block_mask),
-        dlse=grad_lse,
-        dq=(None if grad_query is None else grad_query.transpose(1, 2)),
-        dk=(None if grad_key is None else grad_key.transpose(1, 2)),
-        dv=(None if grad_value is None else grad_value.transpose(1, 2)),
-    )
+    with _torch_stream(query):
+        dq, dk, dv = _flash_attn_bwd(
+            q=q,
+            k=k,
+            v=v,
+            out=out,
+            dout=dout,
+            lse=lse,
+            softmax_scale=float(scale),
+            causal=False,
+            deterministic=False,
+            pack_gqa=bool(pack_gqa),
+            mask_mod=_bdlm_mask_mod(),
+            aux_tensors=[tensor.contiguous() for tensor in mask_buffers],
+            block_sparse_tensors=_backward_block_sparsity(block_mask),
+            dlse=grad_lse,
+            dq=(None if grad_query is None else grad_query.transpose(1, 2)),
+            dk=(None if grad_key is None else grad_key.transpose(1, 2)),
+            dv=(None if grad_value is None else grad_value.transpose(1, 2)),
+        )
     return (
         dq.transpose(1, 2),
         dk.transpose(1, 2),
@@ -306,18 +318,19 @@ def fa4_dense_backward_from_state(
     if not query.is_cuda:
         raise RuntimeError("FA4 backward requires CUDA tensors")
 
-    dq, dk, dv = _flash_attn_bwd(
-        q=query.transpose(1, 2),
-        k=key.transpose(1, 2),
-        v=value.transpose(1, 2),
-        out=output.transpose(1, 2),
-        dout=grad_output.transpose(1, 2),
-        lse=lse,
-        softmax_scale=float(scale),
-        causal=False,
-        deterministic=False,
-        dlse=grad_lse,
-    )
+    with _torch_stream(query):
+        dq, dk, dv = _flash_attn_bwd(
+            q=query.transpose(1, 2),
+            k=key.transpose(1, 2),
+            v=value.transpose(1, 2),
+            out=output.transpose(1, 2),
+            dout=grad_output.transpose(1, 2),
+            lse=lse,
+            softmax_scale=float(scale),
+            causal=False,
+            deterministic=False,
+            dlse=grad_lse,
+        )
     return (
         dq.transpose(1, 2),
         dk.transpose(1, 2),
