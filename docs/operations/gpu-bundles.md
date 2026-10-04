@@ -3,7 +3,7 @@
 Turbo-dLLM publishes GPU bundles for supported combinations of Python, CUDA,
 Linux, and GPU architecture.
 
-The first qualified target is CPython 3.12 on Linux x86_64, CUDA 12.8
+The first qualified target is CPython 3.12 on Ubuntu 24.04 x86_64, CUDA 12.8
 PyTorch, and SM90 (H100/H200). Other Python, CUDA, and GPU combinations
 require their own qualified bundle or an explicit source build. The CUDA
 version printed by `nvidia-smi` is the driver limit; bundle selection uses

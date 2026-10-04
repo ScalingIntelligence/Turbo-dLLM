@@ -21,7 +21,7 @@ uses a supported Python version.
 
 ## Install GPU support
 
-For the qualified SM90 bundle, use Linux x86_64 and Python 3.12. Set up
+For the qualified SM90 bundle, use Ubuntu 24.04 x86_64 and Python 3.12. Set up
 a fresh environment with the matching PyTorch CUDA runtime:
 
 ```bash
@@ -43,7 +43,7 @@ The command selects and verifies the correct native wheels. If no supported
 bundle matches your system, it reports the detected environment and available
 options.
 
-The qualified target is Python 3.12, Linux x86_64, CUDA 12.8 PyTorch, and
+The qualified target is Python 3.12, Ubuntu 24.04 x86_64, CUDA 12.8 PyTorch, and
 an SM90 GPU (H100/H200). A 404 for `gpu-bundles.json` means the release
 catalog has not been published; the portable wheel alone cannot provide
 GPU training. See [GPU bundles](../operations/gpu-bundles.md) for available

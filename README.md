@@ -25,7 +25,7 @@ dllm doctor
 GPU training uses a bundle matched to the host's Python, CUDA, and GPU
 architecture.
 
-The qualified target is Python 3.12, CUDA 12.8, Linux x86_64, and SM90
+The qualified target is Python 3.12, CUDA 12.8, Ubuntu 24.04 x86_64, and SM90
 (H100/H200). Install a CUDA 12.8 PyTorch runtime before selecting the bundle:
 
 ```bash
