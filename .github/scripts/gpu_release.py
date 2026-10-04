@@ -452,7 +452,7 @@ def main() -> None:
             }
         )
         .pip_install(
-            "transformer-engine[core_cu12]==2.13.0", "cmake==4.0.3", "pybind11==3.0.1"
+            "transformer-engine[core-cu12]==2.13.0", "cmake==4.0.3", "pybind11==3.0.1"
         )
         .run_function(build_runtime_wheels, cpu=8, memory=32768, timeout=3600)
         .run_function(install_wheels, cpu=8, memory=32768, timeout=3600)
