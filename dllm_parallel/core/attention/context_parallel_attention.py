@@ -9071,7 +9071,6 @@ def _ring_hybrid_backward_flex(
                     debug_nonfinite_attention=bool(
                         local_attn_mask.debug_nonfinite_attention
                     ),
-                    flex_cache=local_attn_mask.flex_cache,
                 )
             )
         elif active_block_indices.numel() == 0:

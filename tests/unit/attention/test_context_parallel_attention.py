@@ -16,6 +16,8 @@ import math
 import os
 import tempfile
 import traceback
+import time
+from queue import Empty
 from contextlib import nullcontext
 from types import SimpleNamespace
 
@@ -73,6 +75,58 @@ from dllm_parallel.core.attention.ring_transport import (
 )
 from dllm_parallel.core.schedules.block import build_block_schedule
 from dllm_parallel.core.specs import CPBPPolicy
+
+
+def _run_test_processes(processes, queue, *, timeout=300):
+    """Bound cold compilation and reap every rank on failure or interruption."""
+    deadline = time.monotonic() + timeout
+    results = []
+    try:
+        for process in processes:
+            process.start()
+        while len(results) < len(processes):
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise TimeoutError(
+                    f"distributed workers exceeded the {timeout}s deadline"
+                )
+            try:
+                report = queue.get(timeout=min(0.1, remaining))
+            except Empty:
+                assert all(p.exitcode in (None, 0) for p in processes), (
+                    "distributed worker exited unsuccessfully"
+                )
+                if all(p.exitcode == 0 for p in processes):
+                    raise AssertionError(
+                        "distributed workers exited without all reports"
+                    )
+                continue
+            results.append(report)
+            assert report[1] == "ok", report[2]
+        for process in processes:
+            process.join(timeout=max(0, deadline - time.monotonic()))
+        if any(p.is_alive() for p in processes):
+            raise TimeoutError(f"distributed workers exceeded the {timeout}s deadline")
+        assert all(p.exitcode == 0 for p in processes), (
+            "distributed worker exited unsuccessfully"
+        )
+        return results
+    finally:
+        started = [p for p in processes if p.pid is not None]
+        for process in started:
+            if process.is_alive():
+                process.terminate()
+        cleanup_deadline = time.monotonic() + 5
+        for process in started:
+            process.join(timeout=max(0, cleanup_deadline - time.monotonic()))
+        for process in started:
+            if process.is_alive():
+                process.kill()
+        cleanup_deadline = time.monotonic() + 5
+        for process in started:
+            process.join(timeout=max(0, cleanup_deadline - time.monotonic()))
+        queue.close()
+        queue.join_thread()
 
 
 def test_pure_cp_active_query_indices_shard_offsets_inside_every_block() -> None:
@@ -148,7 +202,9 @@ def test_compact_block_active_attention_backward_restores_full_kv_order(
     lse = torch.zeros(1, 2, 4)
     grad_output = torch.ones_like(output)
 
-    def fake_backward(**kwargs: object) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    def fake_backward(
+        **kwargs: object,
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         block_query = kwargs["query"]
         block_key = kwargs["key"]
         block_value = kwargs["value"]
@@ -363,7 +419,9 @@ def test_packed_gqa_backward_skips_generic_token_mask_builder(
         calls.append(kwargs)
         return packed_block_mask
 
-    def fake_backward(**kwargs: object) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    def fake_backward(
+        **kwargs: object,
+    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         assert kwargs["block_mask"] is packed_block_mask
         assert kwargs["packed_gqa"] is True
         assert kwargs["force_torch"] is False
@@ -509,8 +567,12 @@ def test_wide_cp_mask_uses_native_interval_dispatch_without_explicit_bounds(
     monkeypatch.setattr(
         cp_attention,
         "_wide_metadata_plan",
-        lambda **kwargs: expected_plan if kwargs["native"] else pytest.fail(
-            "native wide attention must request a native interval plan"
+        lambda **kwargs: (
+            expected_plan
+            if kwargs["native"]
+            else pytest.fail(
+                "native wide attention must request a native interval plan"
+            )
         ),
     )
 
@@ -572,8 +634,12 @@ def test_wide_cp_backward_uses_native_interval_dispatch_without_explicit_bounds(
     monkeypatch.setattr(
         cp_attention,
         "_wide_metadata_plan",
-        lambda **kwargs: expected_plan if kwargs["native"] else pytest.fail(
-            "native wide attention must request a native interval plan"
+        lambda **kwargs: (
+            expected_plan
+            if kwargs["native"]
+            else pytest.fail(
+                "native wide attention must request a native interval plan"
+            )
         ),
     )
 
@@ -2849,13 +2915,7 @@ def test_monolithic_cp_ring_matches_dense_full_graph_forward_and_backward(
             )
             for rank in range(world_size)
         ]
-        for process in processes:
-            process.start()
-        for process in processes:
-            process.join(timeout=120)
-        for process in processes:
-            assert process.exitcode == 0
-        results = [queue.get(timeout=5) for _ in range(world_size)]
+        results = _run_test_processes(processes, queue, timeout=300)
         errors = [message for _, status, message in results if status != "ok"]
         assert not errors, "\n".join(errors)
     finally:
@@ -2864,7 +2924,9 @@ def test_monolithic_cp_ring_matches_dense_full_graph_forward_and_backward(
 
 
 @pytest.mark.parametrize("clean_kv_transport", ["collective", "streaming"])
-def test_wide_head_cp_ring_matches_dense_full_graph_forward_and_backward(clean_kv_transport: str) -> None:
+def test_wide_head_cp_ring_matches_dense_full_graph_forward_and_backward(
+    clean_kv_transport: str,
+) -> None:
     world_size = 2
     if (
         not dist.is_available()
@@ -2884,13 +2946,7 @@ def test_wide_head_cp_ring_matches_dense_full_graph_forward_and_backward(clean_k
             )
             for rank in range(world_size)
         ]
-        for process in processes:
-            process.start()
-        for process in processes:
-            process.join(timeout=300)
-        for process in processes:
-            assert process.exitcode == 0
-        results = [queue.get(timeout=5) for _ in range(world_size)]
+        results = _run_test_processes(processes, queue, timeout=300)
         errors = [message for _, status, message in results if status != "ok"]
         assert not errors, "\n".join(errors)
     finally:
@@ -3091,13 +3147,7 @@ def test_large_ring_transport_completes_on_four_ranks() -> None:
             )
             for rank in range(world_size)
         ]
-        for process in processes:
-            process.start()
-        for process in processes:
-            process.join(timeout=120)
-        for process in processes:
-            assert process.exitcode == 0
-        results = [queue.get(timeout=5) for _ in range(world_size)]
+        results = _run_test_processes(processes, queue, timeout=300)
         errors = [message for _, status, message in results if status != "ok"]
         assert not errors, "\n".join(errors)
     finally:
@@ -3125,13 +3175,7 @@ def test_checkpointed_multilayer_cp_ring_completes_on_four_ranks() -> None:
             )
             for rank in range(world_size)
         ]
-        for process in processes:
-            process.start()
-        for process in processes:
-            process.join(timeout=120)
-        for process in processes:
-            assert process.exitcode == 0
-        results = [queue.get(timeout=5) for _ in range(world_size)]
+        results = _run_test_processes(processes, queue, timeout=300)
         errors = [message for _, status, message in results if status != "ok"]
         assert not errors, "\n".join(errors)
     finally:
@@ -4112,14 +4156,7 @@ def test_ring_attention_matches_replicated_sdpa_forward_and_backward() -> None:
                 )
                 for rank in range(world_size)
             ]
-            for process in processes:
-                process.start()
-            for process in processes:
-                process.join(timeout=30)
-            for process in processes:
-                assert process.exitcode == 0
-
-            results = [queue.get(timeout=5) for _ in range(world_size)]
+            results = _run_test_processes(processes, queue, timeout=300)
             errors = [message for _, status, message in results if status != "ok"]
             assert not errors, "\n".join(errors)
         finally:
@@ -4147,14 +4184,7 @@ def test_ring_attention_matches_replicated_sdpa_with_nccl_reduce_scatter() -> No
             )
             for rank in range(world_size)
         ]
-        for process in processes:
-            process.start()
-        for process in processes:
-            process.join(timeout=60)
-        for process in processes:
-            assert process.exitcode == 0
-
-        results = [queue.get(timeout=5) for _ in range(world_size)]
+        results = _run_test_processes(processes, queue, timeout=300)
         errors = [message for _, status, message in results if status != "ok"]
         assert not errors, "\n".join(errors)
     finally:
@@ -4182,14 +4212,7 @@ def test_hybrid_ring_attention_matches_replicated_sdpa_forward_and_backward() ->
             )
             for rank in range(world_size)
         ]
-        for process in processes:
-            process.start()
-        for process in processes:
-            process.join(timeout=30)
-        for process in processes:
-            assert process.exitcode == 0
-
-        results = [queue.get(timeout=5) for _ in range(world_size)]
+        results = _run_test_processes(processes, queue, timeout=300)
         errors = [message for _, status, message in results if status != "ok"]
         assert not errors, "\n".join(errors)
     finally:
@@ -4223,14 +4246,7 @@ def test_hybrid_sharded_attention_matches_replicated_sdpa_forward_and_backward(
             )
             for rank in range(world_size)
         ]
-        for process in processes:
-            process.start()
-        for process in processes:
-            process.join(timeout=300)
-        for process in processes:
-            assert process.exitcode == 0
-
-        results = [queue.get(timeout=5) for _ in range(world_size)]
+        results = _run_test_processes(processes, queue, timeout=300)
         errors = [message for _, status, message in results if status != "ok"]
         assert not errors, "\n".join(errors)
     finally:
@@ -4258,14 +4274,7 @@ def test_hybrid_sharded_qwen_d256_collective_matches_dense_backward() -> None:
             )
             for rank in range(world_size)
         ]
-        for process in processes:
-            process.start()
-        for process in processes:
-            process.join(timeout=300)
-        for process in processes:
-            assert process.exitcode == 0
-
-        results = [queue.get(timeout=5) for _ in range(world_size)]
+        results = _run_test_processes(processes, queue, timeout=300)
         errors = [message for _, status, message in results if status != "ok"]
         assert not errors, "\n".join(errors)
     finally:
@@ -4303,13 +4312,7 @@ def test_windowed_fused_collective_matches_dense_forward_and_backward(
             )
             for rank in range(world_size)
         ]
-        for process in processes:
-            process.start()
-        for process in processes:
-            process.join(timeout=300)
-        for process in processes:
-            assert process.exitcode == 0
-        results = [queue.get(timeout=5) for _ in range(world_size)]
+        results = _run_test_processes(processes, queue, timeout=300)
         errors = [message for _, status, message in results if status != "ok"]
         assert not errors, "\n".join(errors)
     finally:
@@ -4338,13 +4341,7 @@ def test_windowed_fused_collective_production_cuda_matches_dense_backward() -> N
             )
             for rank in range(world_size)
         ]
-        for process in processes:
-            process.start()
-        for process in processes:
-            process.join(timeout=600)
-        for process in processes:
-            assert process.exitcode == 0
-        results = [queue.get(timeout=5) for _ in range(world_size)]
+        results = _run_test_processes(processes, queue, timeout=600)
         errors = [message for _, status, message in results if status != "ok"]
         assert not errors, "\n".join(errors)
     finally:
@@ -4374,14 +4371,7 @@ def test_hybrid_sharded_hd128_attention_matches_replicated_sdpa_forward_and_back
             )
             for rank in range(world_size)
         ]
-        for process in processes:
-            process.start()
-        for process in processes:
-            process.join()
-        for process in processes:
-            assert process.exitcode == 0
-
-        results = [queue.get(timeout=5) for _ in range(world_size)]
+        results = _run_test_processes(processes, queue, timeout=300)
         errors = [message for _, status, message in results if status != "ok"]
         assert not errors, "\n".join(errors)
     finally:
@@ -4411,14 +4401,7 @@ def test_hybrid_sharded_hd256_attention_matches_replicated_sdpa_forward_and_back
             )
             for rank in range(world_size)
         ]
-        for process in processes:
-            process.start()
-        for process in processes:
-            process.join(timeout=300)
-        for process in processes:
-            assert process.exitcode == 0
-
-        results = [queue.get(timeout=5) for _ in range(world_size)]
+        results = _run_test_processes(processes, queue, timeout=300)
         errors = [message for _, status, message in results if status != "ok"]
         assert not errors, "\n".join(errors)
     finally:
@@ -4458,13 +4441,7 @@ def test_wide_head_hybrid_sharded_attention_matches_dense_forward_and_backward(
             )
             for rank in range(world_size)
         ]
-        for process in processes:
-            process.start()
-        for process in processes:
-            process.join(timeout=300)
-        for process in processes:
-            assert process.exitcode == 0
-        results = [queue.get(timeout=5) for _ in range(world_size)]
+        results = _run_test_processes(processes, queue, timeout=300)
         errors = [message for _, status, message in results if status != "ok"]
         assert not errors, "\n".join(errors)
     finally:
@@ -4521,3 +4498,29 @@ def test_phased_clean_backward_launches_reduction_before_remaining_compute() -> 
 
     assert events == ["dkdv", "reduce", "dq", "local", "wait"]
     assert result == (clean_grad_query, local_gradients, reduced)
+
+
+def _reported_failure_worker(queue):
+    queue.put((0, "error", "worker reported a failure"))
+    time.sleep(60)
+
+
+def test_distributed_deadline_cleans_up_all_workers() -> None:
+    ctx = mp.get_context("spawn")
+    queue = ctx.Queue()
+    processes = [ctx.Process(target=time.sleep, args=(60,)) for _ in range(2)]
+    with pytest.raises(TimeoutError, match="deadline"):
+        _run_test_processes(processes, queue, timeout=0.1)
+    assert all(not process.is_alive() for process in processes)
+
+
+def test_distributed_reported_failure_cleans_up_waiting_peers() -> None:
+    ctx = mp.get_context("spawn")
+    queue = ctx.Queue()
+    processes = [
+        ctx.Process(target=_reported_failure_worker, args=(queue,)),
+        ctx.Process(target=time.sleep, args=(60,)),
+    ]
+    with pytest.raises(AssertionError, match="worker reported a failure"):
+        _run_test_processes(processes, queue, timeout=20)
+    assert all(not process.is_alive() for process in processes)
