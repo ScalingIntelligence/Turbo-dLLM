@@ -8002,6 +8002,18 @@ def _normalize_flex_block_mask_storage(block_mask: Any) -> Any:
 
     if BlockMask is None:
         raise RuntimeError("Torch FlexAttention BlockMask is unavailable")
+    # Torch 2.10's compiled builder can leave reverse counts uninitialized
+    # on small block grids. Reconstruct them eagerly from the authoritative
+    # forward lists before caching metadata used by dK/dV kernels.
+    block_mask = BlockMask.from_kv_blocks(
+        kv_num_blocks=block_mask.kv_num_blocks,
+        kv_indices=block_mask.kv_indices,
+        full_kv_num_blocks=block_mask.full_kv_num_blocks,
+        full_kv_indices=block_mask.full_kv_indices,
+        BLOCK_SIZE=block_mask.BLOCK_SIZE,
+        mask_mod=block_mask.mask_mod,
+        seq_lengths=block_mask.seq_lengths,
+    )
     q_block_size, kv_block_size = block_mask.BLOCK_SIZE
     q_blocks = math.ceil(int(block_mask.seq_lengths[0]) / int(q_block_size))
     kv_blocks = math.ceil(int(block_mask.seq_lengths[1]) / int(kv_block_size))

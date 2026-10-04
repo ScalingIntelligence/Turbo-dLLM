@@ -115,7 +115,7 @@ def test_data_extra_owns_optional_huggingface_and_parquet_frontends() -> None:
 
 
 def test_package_exposes_pep440_version() -> None:
-    assert dllm_parallel.__version__ == "0.1.5"
+    assert dllm_parallel.__version__ == "0.1.6"
 
 
 def test_documented_install_paths_are_portable_and_bundle_aware() -> None:
@@ -127,7 +127,7 @@ def test_documented_install_paths_are_portable_and_bundle_aware() -> None:
     assert "source .venv/bin/activate" in readme
     assert "\npip install" not in readme
     assert "pip install dllm-parallel" not in readme
-    assert "dllm bundle install --release v0.1.5 --auto" in readme
+    assert "dllm bundle install --release v0.1.6 --auto" in readme
     assert "dllm launch" in readme
     assert "install_production.sh" not in readme
 

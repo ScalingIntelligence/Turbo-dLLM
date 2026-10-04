@@ -1565,6 +1565,14 @@ def test_ragged_prefix_bdlm_attention_matches_dense_shard_backward() -> None:
     torch.testing.assert_close(value.grad, value_ref.grad, atol=8e-2, rtol=8e-2)
 
 
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="native FA4 requires CUDA")
+def test_replicated_attention_backward_on_nondefault_cuda_stream() -> None:
+    stream = torch.cuda.Stream()
+    with torch.cuda.stream(stream):
+        test_replicated_block_attention_matches_dense_forward_and_backward()
+    stream.synchronize()
+
+
 def test_shard_bounds_balances_contiguous_ranges() -> None:
     ranges = [shard_bounds(10, 4, rank) for rank in range(4)]
 

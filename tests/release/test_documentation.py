@@ -27,7 +27,7 @@ def test_governance_and_documentation_sections_exist() -> None:
         "docs/operations/checkpointing.md",
         "docs/api/index.md",
         "docs/development/testing.md",
-        "docs/release-notes/v0.1.5.md",
+        "docs/release-notes/v0.1.6.md",
     )
     assert [path for path in required if not (ROOT / path).is_file()] == []
 
@@ -126,8 +126,8 @@ def test_installed_gpu_and_distributed_workflows_are_documented() -> None:
     )
     topologies = (ROOT / "docs/parallelism/topologies.md").read_text(encoding="utf-8")
 
-    assert "dllm bundle install --release v0.1.5 --auto" in readme
-    assert "dllm bundle install --release v0.1.5 --auto" in installation
+    assert "dllm bundle install --release v0.1.6 --auto" in readme
+    assert "dllm bundle install --release v0.1.6 --auto" in installation
     assert "dllm launch" in readme
     assert "dllm launch" in topologies
     assert "scripts/launch/torchrun.sh" not in topologies

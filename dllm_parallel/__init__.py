@@ -25,7 +25,7 @@ if TYPE_CHECKING:
 try:
     __version__ = metadata.version("turbo-dllm")
 except metadata.PackageNotFoundError:
-    __version__ = "0.1.5"
+    __version__ = "0.1.6"
 
 __all__ = [
     "AttentionPlan",

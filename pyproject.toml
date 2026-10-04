@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "turbo-dllm"
-version = "0.1.5"
+version = "0.1.6"
 description = "Highly optimized distributed training for diffusion language models."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -82,6 +82,7 @@ qwen3_8 = [
     "tilelang==0.1.13",
 ]
 kernel-build = [
+    "apache-tvm-ffi==0.1.12",
     "build==1.5.0",
     "ninja==1.13.0",
     "setuptools-scm==9.2.2",

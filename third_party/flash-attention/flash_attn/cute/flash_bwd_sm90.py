@@ -1134,6 +1134,10 @@ class FlashAttentionBackwardSm90:
                             producer_state_Q.advance()
                             producer_state_dO.advance()
                     else:
+                        # Sparse loads consume the same LSE and dPsum buffers
+                        # as dense loads. PDL can launch us before preprocess
+                        # finishes writing them, so wait before reading either.
+                        cute.arch.griddepcontrol_wait()
                         producer_state_Q, producer_state_dO = produce_block_sparse_q_loads_bwd_sm90(
                             blocksparse_tensors,
                             batch_idx,

@@ -29,12 +29,12 @@ python3.12 -m venv .venv-gpu
 source .venv-gpu/bin/activate
 python -m pip install --upgrade pip
 python -m pip install torch==2.10.0 --index-url https://download.pytorch.org/whl/cu128
-python -m pip install "turbo-dllm==0.1.5"
-dllm bundle install --release v0.1.5 --auto
+python -m pip install "turbo-dllm==0.1.6"
+dllm bundle install --release v0.1.6 --auto
 dllm doctor --training
 ```
 
-For an existing Python 3.12 environment, upgrade Turbo-dLLM to v0.1.5 and
+For an existing Python 3.12 environment, upgrade Turbo-dLLM to v0.1.6 and
 install the same PyTorch CUDA 12.8 runtime before selecting the bundle.
 Bundle selection uses `torch.version.cuda`, not the driver version printed
 by `nvidia-smi`.
@@ -63,7 +63,7 @@ offline installation.
 Qwen3.8 training requires its additional runtime:
 
 ```bash
-python -m pip install "turbo-dllm[qwen3_8]==0.1.5"
+python -m pip install "turbo-dllm[qwen3_8]==0.1.6"
 ```
 
 DiffusionGemma expert parallelism requires DeepEP. Install the tested revision

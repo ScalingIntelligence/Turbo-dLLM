@@ -12,7 +12,7 @@ version printed by `nvidia-smi` is the driver limit; bundle selection uses
 Install the matching bundle automatically:
 
 ```bash
-dllm bundle install --release v0.1.5 --auto
+dllm bundle install --release v0.1.6 --auto
 ```
 
 The installer verifies every downloaded wheel and runs `dllm doctor
@@ -25,14 +25,14 @@ GPU kernels, and installing the `gpu` extra alone does not supply them.
 Check the release assets or follow [native development](../development/native.md).
 
 Version v0.1.1 published only portable artifacts. Upgrade the installer before
-selecting the v0.1.5 bundle:
+selecting the v0.1.6 bundle:
 
 ```bash
-python -m pip install --upgrade "turbo-dllm==0.1.5"
-dllm bundle install --release v0.1.5 --auto
+python -m pip install --upgrade "turbo-dllm==0.1.6"
+dllm bundle install --release v0.1.6 --auto
 ```
 
-The v0.1.5 installer explicitly replaces same-version portable and native
+The v0.1.6 installer explicitly replaces same-version portable and native
 wheels after resolving the GPU runtime dependencies. This avoids pip
 retaining an already-installed portable wheel.
 
@@ -63,7 +63,7 @@ then qualifies them on two SM90 GPUs. GPU qualification must succeed before
 PyPI publication. The GitHub release stays a draft until every asset is
 uploaded successfully. No self-hosted runner is needed.
 
-For v0.1.5 or newer tags with the runtime-wheel manifest format, repair an
+For v0.1.6 or newer tags with the runtime-wheel manifest format, repair an
 unpublished release after an orchestration failure by running
 **Release** from the `main` branch with its immutable version tag. The
 portable artifacts and native wheels are built from that tag, even when the
@@ -71,7 +71,7 @@ workflow repair is newer. The `pypi` environment allows `v*` tags. A repair
 from `main` also requires that environment to allow the `main` branch during
 the repair. Published PyPI versions cannot be overwritten.
 
-For a compatible v0.1.5 or newer release missing GPU assets, run
+For a compatible v0.1.6 or newer release missing GPU assets, run
 **GPU validation** from Actions with its version tag. The older v0.1.1
 installer and manifest do not support the new runtime wheels; upgrade
 instead of backfilling that portable-only release. Validation builds the

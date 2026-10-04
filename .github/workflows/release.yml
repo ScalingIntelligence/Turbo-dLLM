@@ -9,7 +9,7 @@ on:
       release_tag:
         description: Existing immutable tag to build and publish
         required: true
-        default: v0.1.5
+        default: v0.1.6
         type: string
 
 env:
